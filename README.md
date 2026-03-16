@@ -53,7 +53,7 @@ This makes it much easier to **prepare context for AI agents**.
 # Screenshot
 
 <p align="center">
-  <img src="screenshot.png" width="900">
+  <img src="screenshot.png" width="100%">
 </p>
 
 ---
