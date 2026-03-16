@@ -74,7 +74,7 @@ No database required.
 Clone the repository:
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/directory-structure-viewer.git
+git clone https://github.com/cloudpad9/directory-structure-viewer.git
 cd directory-structure-viewer
 ```
 
