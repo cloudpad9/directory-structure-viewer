@@ -1,5 +1,7 @@
 # Directory Structure Viewer
 
+Explore repositories, select files, and copy code context for AI agents in seconds.
+
 ![PHP](https://img.shields.io/badge/PHP-7.4%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Self Hosted](https://img.shields.io/badge/self--hosted-yes-brightgreen)
