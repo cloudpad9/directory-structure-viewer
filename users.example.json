@@ -1,0 +1,6 @@
+{
+  "admin": {
+    "password": "$2y$10$REPLACE_WITH_BCRYPT_HASH",
+    "created_at": 0
+  }
+}

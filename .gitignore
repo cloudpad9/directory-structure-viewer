@@ -1,0 +1,15 @@
+# Runtime auth data
+users.json
+tokens.json
+auth_tokens.json
+
+# Logs
+*.log
+
+# Temp files
+*.tmp
+*.cache
+
+# OS files
+.DS_Store
+Thumbs.db

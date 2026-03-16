@@ -1,0 +1,4285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>Directory Structure Viewer</title>
+    <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&family=Roboto+Mono:wght@400;700&display=swap">
+    <style>
+        body {
+            font-family: Helvetica, Arial, Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            overflow: hidden;
+        }
+        .flex,
+        .flex-first,
+        .flex-last {
+            display: flex;
+        }
+        .flex-col {
+            display: flex;
+            flex-direction: column;
+        }
+        .flex-first > *:first-child,
+        .flex-last > *:last-child {
+            flex: 1;
+        }
+        .flex-between {
+            display: flex;
+            justify-content: space-between;
+        }
+        .flex-1 { flex: 1; }
+        .gap-5 { gap: 5px; }
+        .gap-8 { gap: 8px; }
+        .h-100vh { height: 100vh; }
+
+        /* Base styles */
+        #app {
+            display: flex;
+            flex: 1;
+            flex-direction: row;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        /* Left pane */
+        .left-pane {
+            flex: 0 0 var(--left-width, 400px);
+            padding: 10px;
+            background-color: #f5f5f5;
+            border-right: 1px solid #ddd;
+            box-sizing: border-box;
+            overflow-y: auto;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* Middle pane */
+        .middle-pane {
+            flex: 0 0 var(--middle-width, 460px);
+            box-sizing: border-box;
+            overflow: hidden;
+            position: relative;
+        }
+        /* Middle pane resize handle */
+        .resize-handle{
+            position:absolute; top:0; right:-4px; width:8px; height:100%;
+            cursor: col-resize; z-index: 50; touch-action: none;
+        }
+        .resize-handle::after{
+            content:''; position:absolute; top:0; bottom:0; left:3px; width:2px; background:#ddd;
+        }
+        .resize-handle:hover::after{ background:#bbb; }
+        .collapse-1 .resize-handle, .collapse-2 .resize-handle{ display:none; }
+        @media screen and (max-width: 768px){ .resize-handle{ display:none; } }
+
+        /* Right pane */
+        .right-pane {
+            flex: 1;
+            border-left: 1px solid #d9d9d9;
+            overflow-y: auto;
+            min-width: 0;
+        }
+
+        /* Mobile hamburger menu */
+        .mobile-menu-btn {
+            display: none;
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            z-index: 3000;
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 8px 12px;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+
+        .mobile-menu-btn span {
+            display: block;
+            width: 20px;
+            height: 2px;
+            background: #333;
+            margin: 4px 0;
+            transition: 0.3s;
+            border-radius: 2px;
+        }
+
+        /* Responsive breakpoints */
+        @media screen and (max-width: 1200px) {
+            .left-pane { flex: 0 0 var(--left-width, 300px); }
+            .middle-pane { flex: 0 0 var(--middle-width, 360px); }
+        }
+
+        @media screen and (max-width: 992px) {
+            .left-pane { flex: 0 0 var(--left-width, 280px); }
+            .middle-pane { flex: 0 0 var(--middle-width, 320px); }
+            .directory-tree {
+                display: none;
+            }
+        }
+
+        @media screen and (max-width: 768px) {
+            .mobile-menu-btn {
+                display: block;
+            }
+
+            .mobile-hidden {
+                display: none;
+            }
+
+            #app {
+                flex-direction: column;
+            }
+
+            .left-pane {
+                position: fixed;
+                top: 0;
+                left: -100%;
+                width: 85%;
+                max-width: 360px;
+                height: 100vh;
+                z-index: 2500;
+                transition: left 0.3s ease;
+                box-shadow: 2px 0 8px rgba(0,0,0,0.15);
+                background-color: #f5f5f5;
+            }
+
+            .left-pane.mobile-open {
+                left: 0;
+            }
+
+            /* Hamburger animation when open */
+            .mobile-menu-btn.active span:nth-child(1) {
+                transform: translateY(6px) rotate(45deg);
+            }
+
+            .mobile-menu-btn.active span:nth-child(2) {
+                opacity: 0;
+            }
+
+            .mobile-menu-btn.active span:nth-child(3) {
+                transform: translateY(-6px) rotate(-45deg);
+            }
+
+            .left-pane.mobile-open {
+                left: 0;
+            }
+
+            .middle-pane {
+                flex: 1;
+                width: 100%;
+                max-height: 40vh;
+                border-bottom: 1px solid #ddd;
+            }
+
+            .right-pane {
+                flex: 1;
+                width: 100%;
+                border-left: none;
+                border-top: 1px solid #d9d9d9;
+            }
+
+            .selected-files ul li label {
+                width: auto;
+                max-width: 200px;
+            }
+
+            .controls-row {
+                flex-wrap: wrap;
+            }
+
+            .controls-row button,
+            .controls-row input {
+                font-size: 14px;
+                padding: 6px 10px;
+            }
+        }
+
+        .clear-button { margin-left: 10px; padding: 2px 8px; font-size: 0.9em; }
+        .file-list { margin-top: 20px; }
+        .file-item { margin: 5px 0; display: flex; }
+        .file-item.directory label { text-decoration: underline; }
+        .file-item input[type="checkbox"] { margin-right: 5px; }
+        .selected-files { overflow-x: hidden; padding-left: 5px; padding-right: 10px; flex: 1; }
+        .selected-files ul { margin: 0; padding: 15px 0; list-style: none; }
+        .selected-files ul li {
+            margin-bottom: 3px;
+            word-break: break-word;
+        }
+        .selected-files ul li label { flex: 1; width: 295px; white-space: nowrap; }
+
+        .middle-pane__controls {
+            background: #fff;
+            border-bottom: 1px solid gray;
+            padding: 6px 10px;
+        }
+        .controls-row {
+            display: flex;
+            align-items: center;
+            padding: 4px 0;
+            gap: 5px;
+        }
+        .controls-row label { min-width: 70px; color: #555; }
+
+        .file-content-wrapper { height: 100%; position: relative; }
+        .copy { position: absolute; top: 5px; right: 10px; margin: 5px; z-index: 1; }
+        .file-content {
+            font-family: 'Roboto Mono', monospace;
+            white-space: pre-wrap;
+            overflow: auto;
+            outline: none;
+            padding: 0 10px;
+            height: 100%;
+        }
+        textarea {
+            width: 100%; height: 100%; border: none; background: #f0f0f0;
+            box-sizing: border-box; overflow: auto; resize: none;
+            font-size: 14px;
+        }
+        .block-list { margin-left: 20px; }
+        .block-item { margin: 3px 0; }
+        .block-item.level-1 { background: #b4dbac; margin-left: 20px; }
+        .block-item.level-2 { background: pink; margin-left: 40px; }
+        .small-button { margin-left: 5px; font-size: 0.8em; }
+
+        .ace_editor { font: 16px/normal 'Monaco','Menlo','Ubuntu Mono','Consolas','source-code-pro',monospace !important; }
+
+        @media screen and (max-width: 768px) {
+            .ace_editor {
+                font-size: 14px !important;
+            }
+            .file-content {
+                font-size: 13px;
+                padding: 0 5px;
+            }
+            .sr-root {
+                font-size: 13px;
+                padding: 0 5px;
+            }
+            textarea {
+                font-size: 13px;
+            }
+        }
+
+        /* Dark mode styles */
+        body.dark-mode {
+            background: #202020;
+            color: #e0e0e0;
+        }
+        body.dark-mode .left-pane {
+            background-color: #1a1a1a;
+            border-right: 1px solid #333333;
+        }
+        body.dark-mode .middle-pane__controls {
+            background: #1a1a1a;
+            border-bottom: 1px solid #333333;
+        }
+        body.dark-mode .right-pane {
+            background: #202020;
+            border-left: 1px solid #333333;
+        }
+        body.dark-mode .directory-tree {
+            background-color: #1e1e1e;
+            border: 1px solid #333333;
+            color: #e0e0e0;
+        }
+        body.dark-mode textarea {
+            background: #1e1e1e;
+            color: #e0e0e0;
+            border: 1px solid #333333;
+        }
+        body.dark-mode textarea:focus {
+            outline: 2px solid #3b82f6;
+            outline-offset: -1px;
+            border-color: #3b82f6;
+        }
+        body.dark-mode button {
+            background: #222222;
+            color: #e0e0e0;
+            border: 1px solid #404040;
+        }
+        body.dark-mode button:hover:not(:disabled) {
+            background: #333333;
+            border-color: #525252;
+        }
+        body.dark-mode button:active:not(:disabled) {
+            background: #1e1e1e;
+            border-color: #404040;
+        }
+        body.dark-mode button:disabled {
+            background: #1a1a1a;
+            color: #666666;
+            border-color: #2a2a2a;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
+        /* Primary action buttons - Dark mode */
+        body.dark-mode button:focus-visible {
+            outline: 2px solid #3b82f6;
+            outline-offset: 2px;
+        }
+
+        body.dark-mode input {
+            background: #1e1e1e;
+            color: #e0e0e0;
+            border: 1px solid #404040;
+        }
+
+        body.dark-mode input:hover:not(:disabled) {
+            border-color: #525252;
+        }
+        body.dark-mode input:focus {
+            outline: 2px solid #3b82f6;
+            outline-offset: -1px;
+            border-color: #3b82f6;
+            background: #262626;
+        }
+        body.dark-mode input::placeholder {
+            color: #737373;
+        }
+        body.dark-mode input:disabled {
+            background: #1a1a1a;
+            color: #525252;
+            border-color: #2a2a2a;
+        }
+
+        /* Checkbox - Dark mode */
+        body.dark-mode input[type="checkbox"] {
+            accent-color: #3b82f6;
+        }
+
+        /* Links - Dark mode */
+        body.dark-mode a {
+            color: #60a5fa;
+        }
+        body.dark-mode a:hover {
+            color: #93c5fd;
+        }
+
+        /* Resize handle - Dark mode */
+        body.dark-mode .resize-handle::after {
+            background: #333333;
+        }
+        body.dark-mode .resize-handle:hover::after {
+            background: #525252;
+        }
+
+        /* Mobile menu button - Dark mode */
+        body.dark-mode .mobile-menu-btn {
+            background: #1a1a1a;
+            border-color: #404040;
+        }
+        body.dark-mode .mobile-menu-btn span {
+            background: #e0e0e0;
+        }
+
+        /* File content - Dark mode */
+        body.dark-mode .file-content {
+            color: #e0e0e0;
+        }
+
+        /* Search results - Dark mode */
+        body.dark-mode .sr-root {
+            background: #1e1e1e;
+            color: #e0e0e0;
+        }
+        body.dark-mode .sr-path {
+            color: #60a5fa;
+        }
+        body.dark-mode .sr-hit {
+            color: #fca5a5;
+            background: #7f1d1d;
+            padding: 2px 4px;
+            border-radius: 2px;
+        }
+
+        /* Labels - Dark mode */
+        body.dark-mode label {
+            color: #e0e0e0;
+         }
+        /* Dark mode toggle button */
+        .dark-mode-toggle {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2px 6px;
+            cursor: pointer;
+        }
+        .dark-mode-toggle svg {
+            width: 18px;
+            height: 18px;
+            fill: currentColor;
+        }
+        body.dark-mode .dark-mode-toggle svg {
+            fill: #ffd700;
+            stroke: #ffd700;
+        }
+        .dark-mode-toggle:hover svg {
+            opacity: 0.8;
+        }
+        /* Toast - Dark mode */
+        body.dark-mode .toast {
+            background: #1e1e1e;
+            border-color: #404040;
+            color: #e0e0e0;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+        }
+        body.dark-mode .toast.info {
+            border-left-color: #3b82f6;
+        }
+        body.dark-mode .toast.success {
+            border-left-color: #10b981;
+        }
+        body.dark-mode .toast.warn {
+            border-left-color: #f59e0b;
+        }
+        body.dark-mode .toast.error {
+            border-left-color: #ef4444;
+        }
+        body.dark-mode .toast .close {
+            color: #b8b8b8;
+        }
+        body.dark-mode .toast .close:hover {
+            color: #e0e0e0;
+        }
+
+        /* Notification dialog - Dark mode */
+        body.dark-mode .notification-overlay > div:first-child {
+            background: rgba(0,0,0,0.75);
+        }
+        body.dark-mode .notification-overlay > div:last-child {
+            background: #1e1e1e;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+        }
+        body.dark-mode .notification-overlay header {
+            border-bottom-color: #333333;
+        }
+        body.dark-mode .notification-overlay header button {
+            background: #262626;
+            border-color: #404040;
+            color: #e0e0e0;
+        }
+        body.dark-mode .notification-overlay pre {
+            background: #202020;
+            color: #e0e0e0;
+            border: 1px solid #333333;
+        }
+
+        /* Split button menu - Dark mode */
+        body.dark-mode .split-button .menu {
+            background: #1e1e1e;
+            border-color: #404040;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.5);
+        }
+        body.dark-mode .split-button .menu button:hover:not(:disabled) {
+            background: #2a2a2a;
+        }
+        body.dark-mode .split-button .menu button:disabled {
+            color: #525252;
+        }
+
+        /* Path menu - Dark mode */
+        body.dark-mode .path-menu {
+            background: #1e1e1e;
+            border-color: #404040;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.5);
+        }
+        body.dark-mode .path-menu li button:hover {
+            background: #2a2a2a;
+        }
+        body.dark-mode .path-menu li button:focus-visible {
+            background: #1e3a5f;
+        }
+        body.dark-mode .path-input .drop-btn:hover {
+            background: rgba(255,255,255,0.08);
+        }
+
+        /* List picker dialog - Dark mode */
+        body.dark-mode .notification-overlay footer {
+            border-top-color: #333333;
+        }
+        body.dark-mode .notification-overlay footer button:last-child {
+            background: #1e40af;
+            border-color: #1e40af;
+        }
+        body.dark-mode .notification-overlay footer button:last-child:hover:not(:disabled) {
+            background: #1e3a8a;
+            border-color: #1e3a8a;
+        }
+        body.dark-mode .notification-overlay footer button:first-child {
+            background: #262626;
+            border-color: #404040;
+        }
+
+        /* Rename & Delete Dialog */
+        .confirm-dialog-overlay {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2300;
+        }
+        .confirm-dialog-overlay > .backdrop {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+        }
+        .confirm-dialog {
+            position: relative;
+            width: min(460px, 90vw);
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .confirm-dialog header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            border-bottom: 1px solid #eee;
+        }
+        .confirm-dialog header h3 {
+            margin: 0;
+            font-size: 22px;
+            font-weight: 600;
+        }
+        .confirm-dialog header button {
+            font-size: 24px;
+            line-height: 1;
+            padding: 4px 8px;
+            border-radius: 4px;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            color: #666;
+        }
+        .confirm-dialog header button:hover {
+            background: #f5f5f5;
+            color: #333;
+        }
+        .confirm-dialog .body {
+            padding: 20px;
+        }
+        .confirm-dialog .body p {
+            margin: 0 0 16px 0;
+            color: #333;
+            line-height: 1.5;
+        }
+        .confirm-dialog .body input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        .confirm-dialog .body input:focus {
+            outline: 2px solid #3b82f6;
+            outline-offset: -1px;
+            border-color: #3b82f6;
+        }
+        .confirm-dialog footer {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            padding: 16px 20px;
+            border-top: 1px solid #eee;
+        }
+        .confirm-dialog footer button {
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            border: 1px solid;
+            transition: all 0.15s;
+        }
+        .confirm-dialog footer button.cancel {
+            background: #fff;
+            border-color: #ddd;
+            color: #333;
+        }
+        .confirm-dialog footer button.cancel:hover {
+            background: #f5f5f5;
+            border-color: #ccc;
+        }
+        .confirm-dialog footer button.primary {
+            background: #3b82f6;
+            border-color: #3b82f6;
+            color: #fff;
+        }
+        .confirm-dialog footer button.primary:hover:not(:disabled) {
+            background: #2563eb;
+            border-color: #2563eb;
+        }
+        .confirm-dialog footer button.danger {
+            background: #ef4444;
+            border-color: #ef4444;
+            color: #fff;
+        }
+        .confirm-dialog footer button.danger:hover:not(:disabled) {
+            background: #dc2626;
+            border-color: #dc2626;
+        }
+        .confirm-dialog footer button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Dark mode for dialogs */
+        body.dark-mode .confirm-dialog {
+            background: #1e1e1e;
+        }
+        body.dark-mode .confirm-dialog header {
+            border-bottom-color: #333;
+        }
+        body.dark-mode .confirm-dialog header h3 {
+            color: #e0e0e0;
+        }
+        body.dark-mode .confirm-dialog header button {
+            color: #b8b8b8;
+        }
+        body.dark-mode .confirm-dialog header button:hover {
+            background: #2a2a2a;
+            color: #e0e0e0;
+        }
+        body.dark-mode .confirm-dialog .body p {
+            color: #e0e0e0;
+        }
+        body.dark-mode .confirm-dialog .body input {
+            background: #2a2a2a;
+            border-color: #404040;
+            color: #e0e0e0;
+        }
+        body.dark-mode .confirm-dialog .body input:focus {
+            background: #2a2a2a;
+            border-color: #3b82f6;
+        }
+        body.dark-mode .confirm-dialog footer {
+            border-top-color: #333;
+        }
+        body.dark-mode .confirm-dialog footer button.cancel {
+            background: #2a2a2a;
+            border-color: #404040;
+            color: #e0e0e0;
+        }
+        body.dark-mode .confirm-dialog footer button.cancel:hover {
+            background: #333;
+            border-color: #525252;
+        }
+        body.dark-mode .confirm-dialog footer button.primary {
+            background: #1e40af;
+            border-color: #1e40af;
+        }
+        body.dark-mode .confirm-dialog footer button.primary:hover:not(:disabled) {
+            background: #1e3a8a;
+            border-color: #1e3a8a;
+        }
+        body.dark-mode .confirm-dialog footer button.danger {
+            background: #dc2626;
+            border-color: #dc2626;
+        }
+        body.dark-mode .confirm-dialog footer button.danger:hover:not(:disabled) {
+            background: #b91c1c;
+            border-color: #b91c1c;
+        }
+        /* Notification overlay - refactored from inline styles */
+        .notification-overlay {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1200;
+        }
+        .notification-overlay .backdrop {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+        }
+        .notification-overlay .dialog {
+            position: relative;
+            max-width: 90%;
+            max-height: 90%;
+            min-width: 468px;
+            background: #fff;
+            border-radius: 2px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            z-index: 1201;
+        }
+        .notification-overlay .dialog-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            border-bottom: 1px solid #eee;
+        }
+        .notification-overlay .dialog-header-title {
+            font-weight: 600;
+        }
+        .notification-overlay .dialog-body {
+            padding: 12px 16px;
+            overflow: auto;
+            flex: 1;
+            background: #fff;
+        }
+        .notification-overlay .dialog-body pre {
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-family: monospace;
+            font-size: 15px;
+            margin: 0;
+            padding: 8px;
+            border-radius: 4px;
+        }
+
+        /* Dark mode for notification overlay */
+        body.dark-mode .notification-overlay .backdrop {
+            background: rgba(0, 0, 0, 0.75);
+        }
+        body.dark-mode .notification-overlay .dialog {
+            background: #1e1e1e;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+        }
+        body.dark-mode .notification-overlay .dialog-header {
+            border-bottom-color: #333333;
+        }
+        body.dark-mode .notification-overlay .dialog-header-title {
+            color: #e0e0e0;
+        }
+        body.dark-mode .notification-overlay .dialog-body {
+            background: #1e1e1e;
+        }
+        body.dark-mode .notification-overlay .dialog-body pre {
+            background: #202020;
+            color: #e0e0e0;
+            border: 1px solid #333333;
+        }
+
+        /* Scrollbar - Dark mode (optional, for webkit browsers) */
+        body.dark-mode ::-webkit-scrollbar {
+            width: 12px;
+            height: 12px;
+        }
+        body.dark-mode ::-webkit-scrollbar-track {
+            background: #1a1a1a;
+        }
+        body.dark-mode ::-webkit-scrollbar-thumb {
+            background: #404040;
+            border-radius: 6px;
+            border: 2px solid #1a1a1a;
+        }
+        body.dark-mode ::-webkit-scrollbar-thumb:hover {
+            background: #525252;
+        }
+        /* Collapse levels */
+        .expand-button { display: none; }
+        .collapse-1 .left-pane { flex: 0 0 28px; cursor: pointer; justify-content: center; align-items: center; display: flex; }
+        .collapse-1 .left-pane > * { display: none; }
+        .collapse-1 .left-pane > .expand-button,
+        .collapse-2 .left-pane > .expand-button { display: block; }
+        .collapse-2 .middle-pane { flex: 0 0 0; }
+        .collapse-2 .middle-pane > * { display: none; }
+
+        .directory-tree { margin-top: 20px; font-family: monospace; font-size: 14px; background-color: #f9f9f9; padding: 10px; border: 1px solid #ddd; }
+
+        @media screen and (max-width: 768px) {
+            .collapse-1 .left-pane,
+            .collapse-2 .left-pane,
+            .collapse-2 .middle-pane {
+                position: static;
+                flex: initial;
+            }
+            body.collapse-1,
+            body.collapse-2 {
+                /* Disable collapse on mobile */
+            }
+        }
+
+        /* Search Results styles */
+        .sr-root {
+            height: 100%;
+            overflow: auto;
+            padding: 0 10px;
+            font-family: 'Roboto Mono', monospace;
+            font-size: 15px;
+            background: #f7f3d6; /* nền vàng nhạt như ảnh */
+        }
+        .sr-file { margin-top: 12px; }
+        .sr-file-head { display: flex; align-items: baseline; gap: 6px; }
+        .sr-collapser { width: 28px; cursor: pointer; color: #000; user-select: none; }
+        .sr-path { color: #06c; text-decoration: underline; cursor: pointer; }
+        .sr-preview { margin-left: 10px; white-space: pre; overflow: hidden; }
+        .sr-hit { color: #c00; font-weight: bold; }
+        .sr-summary { margin-top: 12px; }
+
+        /* Toast notifications (top-right) */
+        .toast-container{
+            position:fixed; top:16px; right:16px; z-index:1300;
+            display:flex; flex-direction:column; gap:8px;
+            pointer-events:none;
+        }
+        .toast{
+            pointer-events:auto;
+            display:flex; align-items:flex-start; gap:10px;
+            min-width:280px; max-width:420px;
+            padding:10px 12px; background:#fff;
+            border:1px solid #e5e7eb; border-radius:6px;
+            box-shadow:0 10px 20px rgba(0,0,0,0.15);
+            animation:toast-in .15s ease;
+            word-break: break-word;
+        }
+        .toast .title{ font-weight:600; margin-right:6px; }
+        .toast .msg{ white-space:pre-wrap; word-break:break-word; }
+        .toast .close{ margin-left:auto; background:transparent; border:none; cursor:pointer; font-size:16px; line-height:1; }
+        .toast.info{ border-left:4px solid #3b82f6; }
+        .toast.success{ border-left:4px solid #16a34a; }
+        .toast.warn{ border-left:4px solid #f59e0b; }
+        .toast.error{ border-left:4px solid #ef4444; }
+        @keyframes toast-in{ from{opacity:0; transform:translateY(-6px);} to{opacity:1; transform:translateY(0);} }
+
+        @media screen and (max-width: 768px) {
+            .toast-container {
+                top: 8px;
+                right: 8px;
+            }
+            .toast {
+                min-width: 240px;
+                max-width: calc(100vw - 32px);
+            }
+        }
+
+        /* SplitButton */
+        .split-button { display:inline-flex; position:relative; margin-left:5px; }
+        .split-button .menu{
+            position:absolute; top:100%; right:0; z-index:50; min-width:160px;
+            margin:0; padding:6px 0; list-style:none;
+            background:#fff; border:1px solid #ddd; border-radius:6px;
+            box-shadow:0 8px 16px rgba(0,0,0,0.12);
+        }
+        .split-button .menu button{
+            display:block; width:100%; text-align:left;
+            border:none; background:transparent; padding:8px 12px; margin:0; cursor:pointer;
+        }
+        .split-button .small-button {
+            margin-left: -1px;
+        }
+        /* giữ phần .split-button và .menu cũ của anh */
+        .split-button .menu { top:auto; bottom:auto; }  /* reset mặc định */
+        .split-button .menu.drop-down { top:100%; }
+        .split-button .menu.drop-up   { bottom:100%; }
+
+        /* option: giới hạn chiều cao + scroll nếu chật */
+        .split-button .menu { max-height: 320px; overflow-y: auto; }
+
+        /* ===== PathInput ===== */
+        .path-input { position: relative; display: block; }
+
+        /* hàng chứa input + nút */
+        .path-input .row {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        /* input: chừa chỗ cho nút tam giác */
+        .path-input input {
+            flex: 1;
+            padding-right: 28px;
+            box-sizing: border-box;
+        }
+
+        /* nút tam giác ▼ đặt absolute trong .row */
+        .path-input .drop-btn {
+            position: absolute;
+            right: 6px;
+            top: 50%;
+            transform: translateY(-50%);
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            line-height: 1;
+            font-size: 14px;           /* đủ lớn để bấm */
+            width: 22px; height: 22px; /* hit area tối thiểu */
+            padding: 0;
+            border-radius: 3px;
+        }
+        .path-input .drop-btn:hover { background: rgba(0,0,0,0.06); }
+        .path-input .drop-btn:focus-visible {
+            outline: 2px solid #2684ff;
+            outline-offset: 1px;
+        }
+
+        /* ===== Path menu (teleport to body, position:fixed set bằng inline style) ===== */
+        .path-menu {
+            position: fixed;           /* tọa độ set bởi JS */
+            z-index: 2000;
+            margin: 0;
+            padding: 6px 0;
+            list-style: none;
+            min-width: 160px;          /* sẽ bị override bằng minWidth inline theo input */
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.12);
+            overflow-y: auto;          /* max-height set inline */
+        }
+
+        /* item */
+        .path-menu li { margin: 0; }
+        .path-menu li button{
+            white-space: normal;       /* bỏ nowrap */
+            overflow: visible;         /* không cắt */
+            text-overflow: clip;       /* không dùng ellipsis */
+            overflow-wrap: anywhere;   /* wrap khi cần */
+            word-break: break-word;
+            line-height: 1.25;
+        }
+
+        @media screen and (max-width: 768px) {
+            .path-input input {
+                font-size: 14px;
+                padding: 6px 28px 6px 8px;
+            }
+
+            button {
+                font-size: 14px;
+                padding: 6px 10px;
+                touch-action: manipulation;
+            }
+
+            input[type="checkbox"] {
+                width: 18px;
+                height: 18px;
+                cursor: pointer;
+            }
+
+            .small-button {
+                font-size: 12px;
+                padding: 4px 8px;
+            }
+
+            .file-item label {
+                font-size: 14px;
+                cursor: pointer;
+            }
+        }
+        .path-menu li button:hover { background: #f2f4f7; }
+        .path-menu li button:focus-visible {
+            outline: 2px solid #2684ff;
+            outline-offset: -2px;
+            background: #eef4ff;
+        }
+        .path-menu li button:disabled {
+            color: #999;
+            cursor: default;
+            background: transparent;
+        }
+
+        /* Delete button for recent paths */
+        .path-menu li {
+            position: relative;
+        }
+        .path-menu li .path-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .path-menu li .path-item .path-text {
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .path-menu li .delete-btn {
+            opacity: 0;
+            padding: 2px 6px;
+            font-size: 14px;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+        .path-menu li:hover .delete-btn {
+            opacity: 1;
+        }
+        /* tùy chọn: theme tối (nếu body có .dark) */
+        .dark .path-menu {
+            background: #1f1f1f;
+            border-color: #2a2a2a;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.35);
+        }
+        .dark .path-menu li button:hover { background: #2a2a2a; }
+        .dark .path-input .drop-btn:hover { background: rgba(255,255,255,0.08); }
+        .dark .path-menu li .delete-btn:hover {
+            background: #dc2626;
+        }
+
+        /* List Picker Dialog */
+        .list-picker-dialog {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1250;
+        }
+        .list-picker-dialog .backdrop {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+        }
+        .list-picker-dialog .dialog {
+            position: relative;
+            width: min(520px, 95vw);
+            background: #fff;
+            border-radius: 6px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .list-picker-dialog header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            border-bottom: 1px solid #eee;
+        }
+        .list-picker-dialog header .title {
+            font-weight: 600;
+        }
+        .list-picker-dialog .body {
+            padding: 14px 16px;
+            overflow: auto;
+            max-height: 70vh;
+        }
+        .list-picker-dialog footer {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            padding: 12px 16px;
+            border-top: 1px solid #eee;
+        }
+
+        /* List Picker Dialog - Dark mode */
+        body.dark-mode .list-picker-dialog .backdrop {
+            background: rgba(0, 0, 0, 0.75);
+        }
+        body.dark-mode .list-picker-dialog .dialog {
+            background: #1e1e1e;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+        }
+        body.dark-mode .list-picker-dialog header {
+            border-bottom-color: #333333;
+        }
+        body.dark-mode .list-picker-dialog header .title {
+            color: #e0e0e0;
+        }
+        body.dark-mode .list-picker-dialog footer {
+            border-top-color: #333333;
+        }
+        /* Directory label style in middle pane */
+        .selected-files label.directory {
+            text-decoration: underline;
+        }
+
+        /* Login Dialog */
+        .login-overlay {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            background: rgba(0, 0, 0, 0.95);
+            backdrop-filter: blur(10px);
+        }
+
+        /* Hide app content when not authenticated */
+        body.auth-required .mobile-menu-btn {
+            display: none;
+        }
+
+        body.auth-required .toast-container {
+            display: none;
+        }
+
+        /* Show loading state before auth check */
+        body.auth-checking #app {
+            opacity: 0.3;
+            pointer-events: none;
+        }
+
+        body.auth-checking::before {
+            content: 'Loading...';
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 9998;
+            font-size: 18px;
+            color: #666;
+        }
+
+        .login-dialog {
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+            width: min(420px, 90vw);
+            overflow: hidden;
+        }
+
+        .login-dialog header {
+            padding: 24px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .login-dialog header h2 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        .login-dialog .body {
+            padding: 24px;
+        }
+
+        .login-dialog .form-group {
+            margin-bottom: 20px;
+        }
+
+        .login-dialog .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .login-dialog .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+
+        .login-dialog .form-group input:focus {
+            outline: 2px solid #3b82f6;
+            outline-offset: -1px;
+            border-color: #3b82f6;
+        }
+
+        .login-dialog .error-message {
+            padding: 12px;
+            background: #fee;
+            border: 1px solid #fcc;
+            border-radius: 6px;
+            color: #c00;
+            margin-bottom: 16px;
+            font-size: 14px;
+        }
+
+        .login-dialog footer {
+            padding: 16px 24px;
+            border-top: 1px solid #eee;
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        .login-dialog footer button {
+            padding: 12px 24px;
+            background: #3b82f6;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .login-dialog footer button:hover:not(:disabled) {
+            background: #2563eb;
+        }
+
+        .login-dialog footer button:disabled {
+            background: #94a3b8;
+            cursor: not-allowed;
+        }
+
+        /* Dark mode for login dialog */
+        body.dark-mode .login-dialog {
+            background: #1e1e1e;
+        }
+
+        body.dark-mode .login-dialog header {
+            border-bottom-color: #333;
+        }
+
+        body.dark-mode .login-dialog header h2 {
+            color: #e0e0e0;
+        }
+
+        body.dark-mode .login-dialog .form-group label {
+            color: #e0e0e0;
+        }
+
+        body.dark-mode .login-dialog .form-group input {
+            background: #2a2a2a;
+            border-color: #404040;
+            color: #e0e0e0;
+        }
+
+        body.dark-mode .login-dialog .error-message {
+            background: #3a1010;
+            border-color: #6a2020;
+            color: #ff6b6b;
+        }
+
+        body.dark-mode .login-dialog footer {
+            border-top-color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <!-- Mobile menu toggle -->
+        <mobile-menu-button
+            :is-open="mobileMenuOpen"
+            @toggle="toggleMobileMenu"
+        ></mobile-menu-button>
+
+        <!-- Mobile overlay -->
+        <mobile-overlay
+            :show="mobileMenuOpen"
+            @close="closeMobileMenu"
+        ></mobile-overlay>
+
+        <div class="left-pane h-100vh" @click="expandPanes"
+            :class="{ 'mobile-open': mobileMenuOpen }"
+            :style="{ '--left-width': leftWidth + 'px' }"
+        >
+            <div class="left-pane__content">
+                <div class="flex-first">
+                    <path-input
+                        v-model="directoryPath"
+                        :recent-paths="recentPaths"
+                        placeholder="Enter directory path"
+                        @delete-recent-path="requestDeleteRecentPath"
+                    ></path-input>
+                    <button @click="analyzeDirectory" style="margin-left:5px;">Analyze</button>
+                </div>
+
+                <div v-if="files.length > 0" class="file-list">
+                    <h2 style="font-size: 17px;">Select files to view</h2>
+                    <div class="flex">
+                        <input-clearable
+                            v-model="filterKeyword"
+                            placeholder="Filter by keywords, ex: foo -bar"
+                            class="flex-1"
+                        ></input-clearable>
+                        <button @click="clearLeftPane" style="margin-left: 5px;">Clear</button>
+                    </div>
+                    <div v-for="file in filteredFiles" :key="file.path" class="file-item" :class="{directory: file.type == 'directory'}">
+                        <input v-if="file.type === 'directory'"
+                               type="checkbox"
+                               :id="file.path"
+                               :value="file.path"
+                               :checked="selectedFiles.includes(file.path)"
+                               @change="toggleDirectorySelection(file.path, $event.target.checked)" />
+                        <input v-else
+                               type="checkbox"
+                               :id="file.path"
+                               :value="file.path"
+                               v-model="selectedFiles" />
+                        <label :for="file.path">{{ getRelativePath(file.path) }}</label>
+                    </div>
+                    <div class="directory-tree">
+                        <h3>Directory Structure:</h3>
+                        <pre>{{ renderDirectoryTree(filteredFiles) }}</pre>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Resize handle for LEFT pane (outside scroll area) -->
+            <resize-handle
+                v-model="leftWidth"
+                :min="minLeft"
+                :get-max="computeMaxLeft"
+                :reset-to="DEFAULT_LEFT"
+            ></resize-handle>
+        </div>
+
+        <div class="middle-pane flex-col h-100vh" :style="{ '--middle-width': middleWidth + 'px' }">
+            <!-- Controls header row -->
+            <div class="middle-pane__controls">
+                <div class="controls-row gap-8">
+                    <button @click="viewFiles">View</button>
+                    <button @click="viewFilesOutline">Outline</button>
+                    <button v-if="!hasCheckedVisibleFiles" @click="checkAllFiles">Check all</button>
+                    <button v-if="hasCheckedVisibleFiles" @click="clearCheckedFiles">Un-check</button>
+                    <button @click="downloadFiles">Download</button>
+                    <div class="flex-1"></div>
+                    <button @click="toggleDarkMode"
+                            class="dark-mode-toggle"
+                            :title="darkMode ? 'Switch to light mode' : 'Switch to dark mode'">
+                        <svg v-if="darkMode" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="12" cy="12" r="5"/>
+                            <line x1="12" y1="1" x2="12" y2="3"/>
+                            <line x1="12" y1="21" x2="12" y2="23"/>
+                            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                            <line x1="1" y1="12" x2="3" y2="12"/>
+                            <line x1="21" y1="12" x2="23" y2="12"/>
+                            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                        </svg>
+                        <svg v-else viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                        </svg>
+                    </button>
+                    <button v-if="collapseLevel < 2" @click="collapseLeftPanes" class="mobile-hidden">←</button>
+                    <button v-if="authUsername" @click="handleLogout">Logout</button>
+                </div>
+                <!-- Search row -->
+                <div class="controls-row gap-8">
+                    <input-clearable
+                        v-model="searchQuery"
+                        placeholder="Search for"
+                        class="flex-1"
+                        @enter="runSearch"
+                    ></input-clearable>
+                    <button @click="runSearch" style="width: 80px;">Search</button>
+                </div>
+                <!-- Replace row -->
+                <div class="controls-row gap-8">
+                    <input-clearable
+                        v-model="replaceQuery"
+                        placeholder="Replace with"
+                        class="flex-1"
+                        @enter="runReplace"
+                    ></input-clearable>
+                    <button @click="runReplace" style="width: 80px;">Replace</button>
+                </div>
+                <!-- Save to / Load from lists -->
+                <div class="controls-row gap-8">
+                    <button @click="openSaveListDialog">Save</button>
+                    <button @click="openLoadFromListDialog">Load</button>
+                    <button @click="clearSelectedFiles">Clear</button>
+                    <div class="flex-1"></div>
+                    <button @click="openSelectedTree">Tree</button>
+                    <button @click="openLinksDialog">Links</button>
+                </div>
+                <div style="padding: 4px 0 2px 0;">
+                    <input-clearable
+                        v-model="middlePaneFilter"
+                        placeholder="Filter selected files"
+                        class="flex-1"
+                    ></input-clearable>
+                </div>
+            </div>
+
+            <div class="selected-files">
+                <ul>
+                    <li v-for="item in filteredMiddlePaneItems" :key="item.path">
+                        <div class="flex">
+                            <!-- Checkbox cho directory -->
+                            <input v-if="item.type === 'directory'"
+                                   type="checkbox"
+                                   :id="'middle-dir-' + item.path"
+                                   :value="item.path"
+                                   :checked="isDirectoryCheckedInMiddle(item.path)"
+                                   @change="toggleDirectoryCheckInMiddle(item.path, $event.target.checked)" />
+
+                            <!-- Checkbox cho file -->
+                            <input v-else
+                                   type="checkbox"
+                                   :id="'view-' + item.path"
+                                   :value="item.path"
+                                   v-model="checkedFiles" />
+
+                            <!-- Label với style khác cho directory -->
+                            <label :for="item.type === 'directory' ? 'middle-dir-' + item.path : 'view-' + item.path"
+                                   :class="{ 'directory': item.type === 'directory' }">
+                                {{ getRelativePath(item.path) }}
+                            </label>
+
+                            <!-- Actions chỉ cho files -->
+                            <template v-if="item.type === 'file'">
+                                <split-button
+                                    :primary-label="kindOf(item.path) === 'text' ? 'View' : 'Download'"
+                                    :items="getMenuItems(item.path)"
+                                    @primary="onPrimary(item.path)"
+                                ></split-button>
+                                <button @click="removeSelectedFile(item.path)">x</button>
+                            </template>
+
+                            <!-- Remove button cho directories -->
+                            <button v-else @click="removeSelectedFile(item.path)" style="margin-left: auto;">x</button>
+                        </div>
+
+                        <!-- Block list chỉ cho files -->
+                        <div v-if="item.type === 'file' && expandedFiles[item.path]" class="block-list">
+                            <div v-for="block in expandedFiles[item.path]" :key="block.offset"
+                                 class="block-item" :class="['level-' + block.parentOffsets.length]">
+                                <input type="checkbox"
+                                       :id="'block-' + item.path + '-' + block.offset"
+                                       :value="block.offset"
+                                       v-model="checkedContentBlocks[item.path]"
+                                       @change="onClickContentBlock(item.path, block)" />
+                                <label :for="'block-' + item.path + '-' + block.offset">{{ getBlockName(block) }}</label>
+                            </div>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+            <!-- Resize handle -->
+            <resize-handle
+                v-model="middleWidth"
+                :min="minMiddle"
+                :get-max="computeMaxMiddle"
+                :reset-to="DEFAULT_MIDDLE"
+            ></resize-handle>
+        </div>
+
+        <div v-if="editingFile || searchResult !== null || replaceResult !== null || (mergeContent && mergeContent.length)" class="right-pane h-100vh">
+            <div class="file-content-wrapper">
+                <button v-if="!editingFile && !searchResult && !replaceResult" @click="downloadMergeContent" class="copy" style="right: 70px;">Download</button>
+                <button v-if="!editingFile && !searchResult && !replaceResult" @click="copyMergeContent" class="copy">Copy</button>
+
+                <ace-editor v-if="editingFile" v-model="editingContent" :path="editingFile" @save="saveContent"></ace-editor>
+
+                <search-results
+                    v-else-if="searchResult !== null"
+                    :data="searchResult"
+                    :base-paths="recentPaths"
+                    :query="searchQuery"
+                    :case-sensitive="true"
+                    :use-regex="false"
+                    @open="viewSingleFile">
+                </search-results>
+
+                <replace-results
+                    v-else-if="replaceResult !== null"
+                    :data="replaceResult"
+                    :query="searchQuery"
+                    :replacement="replaceQuery"
+                    :to-rel="getRelativePath"
+                    @open-file="viewSingleFile">
+                </replace-results>
+
+                <div v-else class="file-content" contenteditable="true">{{ mergeContent }}</div>
+            </div>
+        </div>
+
+        <toast-viewer></toast-viewer>
+
+        <notification-viewer default-title="Notification"></notification-viewer>
+
+        <list-picker-dialog
+            v-if="listDialog.open"
+            :mode="listDialog.mode"
+            :lists="fileLists"
+            :allow-create="listDialog.mode === 'save'"
+            :confirm-label="listDialog.mode === 'save' ? 'Save' : 'Load'"
+            @confirm="handleListConfirm"
+            @cancel="closeListDialog"
+            @delete-list="handleListDelete"
+        ></list-picker-dialog>
+
+        <rename-dialog
+            v-if="renameDialog.open"
+            :file-path="renameDialog.filePath"
+            @confirm="handleRenameConfirm"
+            @cancel="renameDialog.open = false"
+        ></rename-dialog>
+
+         <delete-confirm-dialog
+            v-if="deleteDialog.open"
+            title="Delete file"
+            :message="deleteDialog.message"
+            @confirm="handleDeleteConfirm"
+            @cancel="deleteDialog.open = false"
+        ></delete-confirm-dialog>
+
+        <delete-confirm-dialog
+            v-if="deleteRecentPathDialog.open"
+            title="Delete recent path"
+            :message="deleteRecentPathDialog.message"
+            @confirm="handleDeleteRecentPathConfirm"
+            @cancel="deleteRecentPathDialog.open = false"
+        ></delete-confirm-dialog>
+
+        <links-dialog
+            v-if="linksDialog.open"
+            :open="linksDialog.open"
+            :mode="linksDialog.mode"
+            :links="linksDialog.links"
+            :loading="linksDialog.loading"
+            @update:mode="(mode) => linksDialog.mode = mode"
+            @close="closeLinksDialog"
+            @copy="handleLinksCopy"
+        ></links-dialog>
+
+        <!-- Login Dialog -->
+        <login-dialog
+            v-if="showLoginDialog"
+            @login-success="handleLoginSuccess"
+        ></login-dialog>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.36.2/ace.min.js"></script>
+
+    <script>
+        const { ref, reactive, computed, watch, onMounted, onUnmounted } = Vue;
+
+        window.eventBus = (() => {
+              const listeners = new Map();
+              return {
+                  $on(event, cb) {
+                      if (!listeners.has(event)) listeners.set(event, new Set());
+                      listeners.get(event).add(cb);
+                  },
+                  $off(event, cb) {
+                      listeners.get(event)?.delete(cb);
+                  },
+                  $emit(event, payload) {
+                      listeners.get(event)?.forEach(fn => {
+                          try { fn(payload); } catch (e) { console.error(e); }
+                      });
+                  }
+              };
+          })();
+
+        function notify(payload) {
+            // payload: string | { title?: string, message?: string, level?: 'info'|'success'|'warn'|'error' }
+            window.eventBus.$emit('notification', payload);
+        }
+
+        function toast(payload) {
+            // payload: string | { title?: string, message?: string, level?: 'info'|'success'|'warn'|'error', timeoutMs?: number }
+            window.eventBus.$emit('toast', payload);
+        }
+
+        function formatAxiosError(e) {
+            const status = e?.response?.status;
+            const msg = e?.response?.data?.message || e?.message || 'Unknown error';
+            return status ? `[${status}] ${msg}` : msg;
+        }
+
+        function debounce(func, wait) {
+            let timeout;
+            return function(...args) {
+                clearTimeout(timeout);
+                timeout = setTimeout(() => func.apply(this, args), wait);
+            };
+        }
+
+        // --- helpers for file types ---
+        const IMG_EXTS  = ['.png','.jpg','.jpeg','.gif','.webp','.bmp','.svg'];
+        const PDF_EXTS  = ['.pdf'];
+        const AUDIO_EXTS= ['.mp3','.wav','.ogg','.m4a'];
+        const VIDEO_EXTS= ['.mp4','.webm','.ogv'];
+
+        function extOf(path){ const m=path.toLowerCase().match(/\.[^.]+$/); return m?m[0]:''; }
+        function isTextFile(path){ return kindOf(path) === 'text'; }
+        function kindOf(path){
+            const e = extOf(path);
+            if (IMG_EXTS.includes(e))   return 'image';
+            if (PDF_EXTS.includes(e))   return 'pdf';
+            if (AUDIO_EXTS.includes(e)) return 'audio';
+            if (VIDEO_EXTS.includes(e)) return 'video';
+            return 'text';
+        }
+
+        const ToastViewer = {
+            template: `
+                <div class="toast-container" aria-live="polite" aria-atomic="true">
+                    <div v-for="t in toasts" :key="t.id" class="toast" :class="t.level">
+                        <div style="display:flex; flex-direction:column; gap:2px;">
+                            <div class="title">{{ t.title }}</div>
+                            <div class="msg">{{ t.message }}</div>
+                        </div>
+                        <button class="close" aria-label="Close" @click="dismiss(t.id)">×</button>
+                    </div>
+                </div>
+            `,
+            data(){ return { toasts: [] }; },
+            methods:{
+                handleToast(payload){
+                    const id = Date.now() + Math.random();
+                    const p = typeof payload === 'string'
+                        ? { title:'Notification', message:payload, level:'info' }
+                        : { title: payload?.title || 'Notification',
+                            message: payload?.message || payload?.text || '',
+                            level: payload?.level || 'info',
+                            timeoutMs: payload?.timeoutMs };
+                    const item = { id, ...p };
+                    this.toasts.push(item);
+                    const ttl = Number.isFinite(p.timeoutMs) ? p.timeoutMs : 2500;
+                    setTimeout(()=>this.dismiss(id), ttl);
+                },
+                dismiss(id){ this.toasts = this.toasts.filter(t => t.id !== id); }
+            },
+            mounted(){ window.eventBus.$on('toast', this.handleToast); },
+            beforeUnmount(){ window.eventBus.$off('toast', this.handleToast); }
+        };
+
+        const NotificationViewer = {
+            props: {
+                defaultTitle: {
+                    type: String,
+                    default: 'Notification'
+                }
+            },
+            template: `
+                <div v-if="open" class="notification-overlay" @click.self="close" role="dialog" aria-modal="true" :aria-label="title">
+                    <div class="backdrop"></div>
+                    <div class="dialog">
+                        <header class="dialog-header">
+                            <div class="dialog-header-title">{{ title }}</div>
+                            <button @click="close" aria-label="Close" style="font-size:20px; line-height:1; padding:6px 10px; border-radius:6px; border:1px solid #ddd; cursor:pointer;">×</button>
+                        </header>
+                        <div class="dialog-body">
+                            <pre v-text="content"></pre>
+                        </div>
+                    </div>
+                </div>
+            `,
+            data() {
+                return {
+                    open: false,
+                    title: this.defaultTitle,
+                    content: ''
+                };
+            },
+            methods: {
+                handleNotification(payload) {
+                    if (typeof payload === 'string') {
+                        this.title = this.defaultTitle;
+                        this.content = payload;
+                    } else {
+                        this.title = payload?.title || this.defaultTitle;
+                        this.content = payload?.message || payload?.text || '';
+                    }
+                    this.open = !!this.content;
+                },
+                close() {
+                    this.open = false;
+                    this.content = '';
+                    this.title = this.defaultTitle;
+                },
+                onKeyDown(e) {
+                    if (this.open && (e.key === 'Escape' || e.key === 'Esc')) this.close();
+                }
+            },
+            mounted() {
+                window.eventBus.$on('notification', this.handleNotification);
+                window.addEventListener('keydown', this.onKeyDown);
+                this.$watch(() => this.open, (open) => {
+                    document.body.style.overflow = open ? 'hidden' : '';
+                });
+            },
+            beforeUnmount() {
+                window.eventBus.$off('notification', this.handleNotification);
+                window.removeEventListener('keydown', this.onKeyDown);
+                document.body.style.overflow = '';
+            }
+        };
+
+        const AceEditor = {
+            props: ['modelValue', 'path'],
+            emits: ['update:modelValue', 'save'],
+            setup(props, { emit }) {
+                const editorRef = ref(null);
+                let aceEditor = null;
+
+                const getFileExtension = (filename) => {
+                    return filename.slice((filename.lastIndexOf(".") - 1 >>> 0) + 2);
+                };
+
+                const getModeFromExtension = (extension) => {
+                    const modeMap = {
+                        js: 'javascript', jsx: 'jsx', ts: 'typescript', tsx: 'tsx',
+                        html: 'html', css: 'css', php: 'php', py: 'python', rb: 'ruby',
+                        java: 'java', c: 'c_cpp', cpp: 'c_cpp', json: 'json', md: 'markdown',
+                        sql: 'sql', xml: 'xml', yaml: 'yaml', sh: 'sh', vue: 'vue'
+                    };
+                    return modeMap[extension.toLowerCase()] || 'text';
+                };
+
+                onMounted(() => {
+                    ace.config.set('basePath', 'https://cdnjs.cloudflare.com/ajax/libs/ace/1.36.2/');
+                    aceEditor = ace.edit(editorRef.value);
+
+                    aceEditor.setOptions({
+                        enableBasicAutocompletion: true,
+                        enableLiveAutocompletion: true,
+                        enableSnippets: true,
+                        showLineNumbers: true,
+                        tabSize: 4
+                    });
+
+                    aceEditor.setTheme("ace/theme/cloud_editor_dark");
+
+                    const extension = getFileExtension(props.path);
+                    const mode = getModeFromExtension(extension);
+                    aceEditor.session.setMode(`ace/mode/${mode}`);
+
+                    aceEditor.setValue(props.modelValue, -1);
+
+                    aceEditor.on('change', () => { emit('update:modelValue', aceEditor.getValue()); });
+
+                    const handleKeydown = (event) => {
+                        if (event.ctrlKey && event.key === 's') {
+                            event.preventDefault();
+                            emit('save', aceEditor.getValue());
+                        }
+                    };
+
+                    document.addEventListener('keydown', handleKeydown);
+
+                    onUnmounted(() => {
+                        document.removeEventListener('keydown', handleKeydown);
+                        aceEditor.destroy();
+                    });
+                });
+
+                watch(() => props.modelValue, (newValue) => {
+                    if (aceEditor && newValue !== aceEditor.getValue()) {
+                        aceEditor.setValue(newValue, -1);
+                    }
+                });
+
+                return { editorRef };
+            },
+            template: `<div ref="editorRef" class="editor" style="width: 100%; height: 100%;"></div>`
+        };
+
+        const SearchResults = {
+            props: ['data', 'basePaths', 'query', 'caseSensitive', 'useRegex'],
+            emits: ['open'],
+            setup(props, { emit }) {
+                const collapsed = Vue.ref(new Set());
+
+                const toggle = (path) => {
+                    const s = new Set(collapsed.value);
+                    s.has(path) ? s.delete(path) : s.add(path);
+                    collapsed.value = s;
+                };
+                const isCollapsed = (path) => collapsed.value.has(path);
+
+                // Rút gọn path theo recent base paths
+                const toRel = (fullPath) => {
+                    if (!fullPath) return fullPath;
+                    for (const base of props.basePaths || []) {
+                        if (fullPath.startsWith(base)) {
+                            return fullPath.slice(base.length).replace(/^[\/\\]/, '');
+                        }
+                    }
+                    return fullPath;
+                };
+
+                const openFile = (path) => emit('open', path);
+
+                // --- Highlight helpers ---
+                function escapeHtml(s) {
+                    return s
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;');
+                }
+                function escapeRegex(s) {
+                    return s.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+                }
+                function highlightPreview(preview) {
+                    if (!props.query) return escapeHtml(preview);
+
+                    // Regex mode: dùng RegExp
+                    if (props.useRegex) {
+                        const flags = props.caseSensitive ? 'g' : 'gi';
+                        let re;
+                        try {
+                            re = new RegExp(props.query, flags);
+                        } catch (e) {
+                            // Regex invalid -> fallback literal
+                            return highlightLiteral(preview, props.query, props.caseSensitive);
+                        }
+                        return escapeHtml(preview).replace(
+                            new RegExp(props.query, flags),
+                            (m) => `<span class="sr-hit">${escapeHtml(m)}</span>`
+                        );
+                    }
+
+                    // Literal mode
+                    return highlightLiteral(preview, props.query, props.caseSensitive);
+                }
+                function highlightLiteral(preview, needle, caseSensitive) {
+                    if (!needle) return escapeHtml(preview);
+                    const src = caseSensitive ? preview : preview.toLowerCase();
+                    const pat = caseSensitive ? needle : needle.toLowerCase();
+
+                    let out = '';
+                    let i = 0;
+                    const n = pat.length;
+                    if (n === 0) return escapeHtml(preview);
+
+                    while (true) {
+                        const p = src.indexOf(pat, i);
+                        if (p === -1) {
+                            out += escapeHtml(preview.slice(i));
+                            break;
+                        }
+                        out += escapeHtml(preview.slice(i, p));
+                        out += `<span class="sr-hit">${escapeHtml(preview.slice(p, p + n))}</span>`;
+                        i = p + n;
+                    }
+                    return out;
+                }
+
+                return { toggle, isCollapsed, openFile, toRel, highlightPreview };
+            },
+            template: `
+                <div class="sr-root" style="height:100%; overflow:auto; padding:10px; font-family: 'Roboto Mono', monospace;">
+                    <div style="border-bottom: 1px solid gray; padding-bottom: 5px;">Scanned: {{data.summary.scanned}} · Files matched: {{data.summary.matched_files}} · Total occurrences: {{data.summary.total_matches}}</div>
+
+                    <div v-for="file in data.matches" :key="file.path" style="margin-top:12px;">
+                        <div style="font-weight:bold">
+                            <span style="cursor:pointer; margin-right:6px;" @click="toggle(file.path)">
+                                {{ isCollapsed(file.path) ? '[+]' : '[-]' }}
+                            </span>
+                            <span>File: </span>
+                            <a href="javascript:void(0)" @click="openFile(file.path)">{{ toRel(file.path) }}</a>
+                        </div>
+
+                        <div v-show="!isCollapsed(file.path)" style="border-left: 1px solid #4c4d4d; margin-left: 13px;">
+                            <div v-for="line in file.lines" :key="file.path + ':' + line.line" style="padding-left:8px; margin-bottom:8px;">
+                                <div style="display: flex;">
+                                    <div>- Line {{line.line}} - </div>
+                                    <div style="margin-left: 10px; white-space:pre; overflow:hidden;"
+                                         v-html="highlightPreview(line.preview)"></div>
+                                </div>
+                            </div>
+                            <div style="padding-left:8px;">Found {{ file.total }} occurrence<span v-if="file.total > 1">s</span>.</div>
+                        </div>
+                    </div>
+                </div>
+            `
+        };
+
+        const ReplaceResults = {
+            props: {
+                data: { type: Object, required: true },
+                query: { type: String, required: true },
+                replacement: { type: String, required: true },
+                toRel: { type: Function, required: true }
+            },
+            emits: ['open-file'],
+            setup(props, { emit }) {
+                const collapsed = Vue.reactive(new Set());
+
+                function toggle(path) {
+                    if (collapsed.has(path)) collapsed.delete(path); else collapsed.add(path);
+                }
+                function isCollapsed(path) { return collapsed.has(path); }
+                function openFile(path) { emit('open-file', path); }
+
+                // highlight match (literal, case-sensitive; giữ nguyên style Search)
+                function highlightPreview(text) {
+                    if (!props.query) return escapeHtml(text);
+                    const pattern = escapeRegExp(props.query);
+                    const re = new RegExp(pattern, 'g');
+                    return escapeHtml(text).replace(
+                        new RegExp(pattern, 'g'),
+                        (m) => `<span style="color:#c00; font-weight:bold;">${escapeHtml(m)}</span>`
+                    );
+                }
+
+                // render preview sau khi replace (literal, case-sensitive)
+                function replacePreview(text) {
+                    if (!props.query) return escapeHtml(text);
+                    const pattern = escapeRegExp(props.query);
+                    return escapeHtml(text).replace(
+                        new RegExp(pattern, 'g'),
+                        () => `<span>${escapeHtml(props.replacement)}</span>`
+                    );
+                }
+
+                function escapeHtml(s) {
+                    return String(s)
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;');
+                }
+                function escapeRegExp(s) {
+                    return s.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+                }
+
+                return { toggle, isCollapsed, openFile, highlightPreview, replacePreview };
+            },
+            template: `
+                <div class="sr-root" style="height:100%; overflow:auto; padding:10px; font-family: 'Roboto Mono', monospace;">
+                    <div style="border-bottom: 1px solid gray; padding-bottom: 5px;">
+                        Scanned: {{data.summary.scanned}} · Files matched: {{data.summary.matched_files}} · Total occurrences: {{data.summary.total_matches}}
+                    </div>
+
+                    <div v-for="file in data.matches" :key="file.path" style="margin-top:12px;">
+                        <div style="font-weight:bold">
+                            <span style="cursor:pointer; margin-right:6px;" @click="toggle(file.path)">
+                                {{ isCollapsed(file.path) ? '[+]' : '[-]' }}
+                            </span>
+                            <span>File: </span>
+                            <a href="javascript:void(0)" @click="openFile(file.path)">{{ toRel(file.path) }}</a>
+                        </div>
+
+                        <div v-show="!isCollapsed(file.path)" style="border-left: 1px solid #4c4d4d; margin-left: 13px;">
+                            <div v-for="line in file.lines" :key="file.path + ':' + line.line" style="padding-left:8px; margin-bottom:8px;">
+                                <div style="display:flex;">
+                                    <div>- Line {{line.line}} -</div>
+                                    <div style="margin-left:10px; white-space:pre; overflow:auto;" v-html="highlightPreview(line.preview)"></div>
+                                </div>
+                                <div style="display:flex;">
+                                    <div>- Replaced by -</div>
+                                    <div style="margin-left:10px; white-space:pre; overflow:auto;" v-html="replacePreview(line.preview)"></div>
+                                </div>
+                            </div>
+                            <div style="padding-left:8px;">Found {{ file.total }} occurrence<span v-if="file.total > 1">s</span>.</div>
+                        </div>
+                    </div>
+                </div>
+            `
+        };
+
+        const RenameDialog = {
+            name: 'RenameDialog',
+            props: {
+                filePath: { type: String, required: true }
+            },
+            emits: ['confirm', 'cancel'],
+            setup(props, { emit }) {
+                const currentName = ref('');
+                const newName = ref('');
+                const inputRef = ref(null);
+
+                onMounted(() => {
+                    const name = props.filePath.split('/').pop();
+                    currentName.value = name;
+                    newName.value = name;
+                    Vue.nextTick(() => {
+                        if (inputRef.value) {
+                            inputRef.value.focus();
+                            inputRef.value.select();
+                        }
+                    });
+                    document.addEventListener('keydown', onKeyDown);
+                });
+
+                onUnmounted(() => {
+                    document.removeEventListener('keydown', onKeyDown);
+                });
+
+                const canConfirm = computed(() => {
+                    const val = (newName.value || '').trim();
+                    return val && val !== currentName.value;
+                });
+
+                function onKeyDown(e) {
+                    if (e.key === 'Escape') emit('cancel');
+                    if (e.key === 'Enter' && canConfirm.value) doConfirm();
+                }
+
+                function doConfirm() {
+                    if (!canConfirm.value) return;
+                    emit('confirm', newName.value.trim());
+                }
+
+                function doCancel() {
+                    emit('cancel');
+                }
+
+                return { newName, inputRef, canConfirm, doConfirm, doCancel };
+            },
+            template: `
+                <div class="confirm-dialog-overlay" role="dialog" aria-modal="true">
+                    <div class="backdrop" @click="doCancel"></div>
+                    <div class="confirm-dialog">
+                        <header>
+                            <h3>Rename file</h3>
+                            <button @click="doCancel" aria-label="Close">×</button>
+                        </header>
+                        <div class="body">
+                            <p>Enter new file name:</p>
+                            <input ref="inputRef" v-model="newName" type="text" @keydown.enter="doConfirm" @keydown.esc="doCancel" />
+                        </div>
+                        <footer>
+                            <button class="cancel" @click="doCancel">Cancel</button>
+                            <button class="primary" :disabled="!canConfirm" @click="doConfirm">Rename</button>
+                        </footer>
+                    </div>
+                </div>
+            `
+        };
+
+        const DeleteConfirmDialog = {
+            name: 'DeleteConfirmDialog',
+            props: {
+                title: { type: String, default: 'Delete confirmation' },
+                message: { type: String, required: true }
+            },
+            emits: ['confirm', 'cancel'],
+            template: `
+                <div class="confirm-dialog-overlay" role="dialog" aria-modal="true">
+                    <div class="backdrop" @click="$emit('cancel')"></div>
+                    <div class="confirm-dialog">
+                        <header>
+                            <h3>{{ title }}</h3>
+                            <button @click="$emit('cancel')" aria-label="Close">×</button>
+                        </header>
+                        <div class="body">
+                            <p>{{ message }}</p>
+                        </div>
+                        <footer>
+                            <button class="cancel" @click="$emit('cancel')">Cancel</button>
+                            <button class="danger" @click="$emit('confirm')">Delete</button>
+                        </footer>
+                    </div>
+                </div>
+            `
+        };
+
+        const InputClearable = {
+            name: 'InputClearable',
+            props: {
+                modelValue: { type: String, default: '' },
+                placeholder: { type: String, default: '' }
+            },
+            emits: ['update:modelValue', 'clear', 'enter'],
+            setup(props, { emit }) {
+                function onInput(e) { emit('update:modelValue', e.target.value); }
+                function clearInput() {
+                    emit('update:modelValue', '');
+                    emit('clear');
+                }
+                function onKeydown(e) {
+                    if (e.key === 'Enter') { emit('enter'); }
+                }
+                return { onInput, clearInput, onKeydown };
+            },
+            template: `
+                <div style="position:relative; display:flex; align-items:center;">
+                    <input
+                        :value="modelValue"
+                        :placeholder="placeholder"
+                        @input="onInput"
+                        @keydown="onKeydown"
+                        style="flex:1; padding-right:26px;"
+                    >
+                    <button
+                        v-if="modelValue && modelValue.length"
+                        @click="clearInput"
+                        type="button"
+                        aria-label="Clear input"
+                        title="Clear"
+                        style="position:absolute; right:6px; border:none; background:transparent; cursor:pointer; font-weight:bold;"
+                    >×</button>
+                </div>
+            `
+        };
+
+        const SplitButton = {
+            name: 'SplitButton',
+            props: {
+                primaryLabel: { type: String, required: true },
+                items: { type: Array, default: () => [] }, // [{ label, action, disabled }]
+                align: { type: String, default: 'right' }, // 'left' | 'right'
+                sizeClass: { type: String, default: 'small-button' }
+            },
+            emits: ['primary'],
+            setup(props, { emit }) {
+                const open = ref(false);
+                const root = ref(null);
+                const menuRef = ref(null);
+                const dropUp = ref(false);
+                const maxH = ref(320); // sẽ cập nhật theo không gian thực tế
+
+                function closeOnDoc(e){
+                    if (!root.value) return;
+                    if (!root.value.contains(e.target)) open.value = false;
+                }
+
+                function onPrimary(){ emit('primary'); }
+                function onToggle(){
+                    open.value = !open.value;
+                    if (open.value) Vue.nextTick(reposition);
+                }
+                function onSelect(it){
+                    if (!it || it.disabled) return;
+                    try { it.action?.(); } finally { open.value = false; }
+                }
+                function onKeydown(e){
+                    if (e.key === 'Enter'){ e.preventDefault(); onPrimary(); }
+                    else if (e.key === 'ArrowDown'){ e.preventDefault(); open.value = true; Vue.nextTick(reposition); }
+                    else if (e.key === 'Escape'){ open.value = false; }
+                }
+
+                function reposition(){
+                    if (!root.value || !menuRef.value) return;
+                    const rect = root.value.getBoundingClientRect();
+                    const menuEl = menuRef.value;
+
+                    // đo kích thước thực của menu
+                    const mh = menuEl.scrollHeight || menuEl.offsetHeight || 0;
+
+                    const vpH = window.innerHeight || document.documentElement.clientHeight || 0;
+                    const spaceBelow = Math.max(0, vpH - rect.bottom - 8); // chừa 8px
+                    const spaceAbove = Math.max(0, rect.top - 8);
+
+                    // chọn hướng
+                    dropUp.value = (spaceBelow < mh) && (spaceAbove > spaceBelow);
+
+                    // giới hạn chiều cao theo hướng đã chọn
+                    maxH.value = dropUp.value ? Math.min(320, spaceAbove) : Math.min(320, spaceBelow);
+                }
+
+                function onWinChange(){
+                    if (open.value) reposition();
+                }
+
+                onMounted(()=>{
+                    document.addEventListener('click', closeOnDoc, true);
+                    window.addEventListener('resize', onWinChange, true);
+                    // capture scroll từ mọi container → chỉ reposition/đóng nếu cần
+                    document.addEventListener('scroll', onWinChange, true);
+                });
+                onUnmounted(()=>{
+                    document.removeEventListener('click', closeOnDoc, true);
+                    window.removeEventListener('resize', onWinChange, true);
+                    document.removeEventListener('scroll', onWinChange, true);
+                });
+
+                return { open, root, menuRef, dropUp, maxH, onPrimary, onToggle, onSelect, onKeydown };
+            },
+            template: `
+                <div ref="root" class="split-button" @keydown="onKeydown">
+                    <button type="button" :class="sizeClass" @click="onPrimary">{{ primaryLabel }}</button>
+                    <button type="button" :class="sizeClass" aria-haspopup="menu"
+                            :aria-expanded="open ? 'true' : 'false'" @click="onToggle">▾</button>
+
+                    <ul v-if="open"
+                        ref="menuRef"
+                        class="menu"
+                        :class="dropUp ? 'drop-up' : 'drop-down'"
+                        role="menu"
+                        :style="{ [align==='right' ? 'right' : 'left']: '0', maxHeight: maxH + 'px', overflowY: 'auto' }">
+                        <li v-for="(it,i) in items" :key="i" role="menuitem">
+                            <button type="button" :disabled="it?.disabled" @click="onSelect(it)">{{ it.label }}</button>
+                        </li>
+                    </ul>
+                </div>
+            `
+        };
+
+        const MobileMenuButton = {
+            name: 'MobileMenuButton',
+            props: {
+                isOpen: { type: Boolean, default: false }
+            },
+            emits: ['toggle'],
+            setup(props, { emit }) {
+                const handleToggle = () => {
+                    emit('toggle');
+                };
+
+                return { handleToggle };
+            },
+            template: `
+                <button
+                    class="mobile-menu-btn"
+                    :class="{ active: isOpen }"
+                    @click="handleToggle"
+                    aria-label="Toggle menu"
+                    :aria-expanded="isOpen ? 'true' : 'false'"
+                >
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </button>
+            `
+        };
+
+        const MobileOverlay = {
+            name: 'MobileOverlay',
+            props: {
+                show: { type: Boolean, default: false }
+            },
+            emits: ['close'],
+            setup(props, { emit }) {
+                const handleClose = () => {
+                    emit('close');
+                };
+
+                return { handleClose };
+            },
+            template: `
+                <div
+                    v-if="show"
+                    @click="handleClose"
+                    class="mobile-overlay"
+                    style="position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 2000;"
+                ></div>
+            `
+        };
+
+        const ResizeHandle = {
+            name: 'ResizeHandle',
+            props: {
+                modelValue: { type: Number, required: true },
+                min: { type: Number, default: 280 },
+                getMax: { type: Function, required: true },
+                resetTo: { type: Number, default: 460 }
+            },
+            emits: ['update:modelValue'],
+            setup(props, { emit }) {
+                let startX = 0, startVal = 0, rafId = 0;
+                function maxNow() { try { return Number(props.getMax?.()) || Infinity; } catch { return Infinity; } }
+                function clamp(v) { return Math.min(Math.max(v, Number(props.min) || 0), maxNow()); }
+                function onStart(e){
+                    startX = e.clientX; startVal = props.modelValue;
+                    e.currentTarget.setPointerCapture?.(e.pointerId);
+                    document.body.style.userSelect = 'none';
+                    window.addEventListener('pointermove', onMove, true);
+                    window.addEventListener('pointerup', onEnd, true);
+                }
+                function onMove(e){
+                    if (rafId) cancelAnimationFrame(rafId);
+                    rafId = requestAnimationFrame(() => {
+                        const delta = e.clientX - startX;
+                        emit('update:modelValue', clamp(startVal + delta));
+                    });
+                }
+                function onEnd(){
+                    document.body.style.userSelect = '';
+                    window.removeEventListener('pointermove', onMove, true);
+                    window.removeEventListener('pointerup', onEnd, true);
+                }
+                function onDbl(){ emit('update:modelValue', clamp(Number(props.resetTo))); }
+                function onKey(e){
+                    const step = e.shiftKey ? 50 : 10;
+                    let v = props.modelValue;
+                    if (e.key === 'ArrowLeft') { v -= step; }
+                    else if (e.key === 'ArrowRight') { v += step; }
+                    else if (e.key === 'Home') { v = Number(props.min) || 0; }
+                    else if (e.key === 'End') { v = maxNow(); }
+                    else { return; }
+                    e.preventDefault();
+                    emit('update:modelValue', clamp(v));
+                }
+                return { onStart, onDbl, onKey };
+            },
+            template: `
+                <div class="resize-handle"
+                     role="separator"
+                     aria-orientation="vertical"
+                     :aria-valuemin="min"
+                     :aria-valuenow="modelValue"
+                     tabindex="0"
+                     @pointerdown="onStart"
+                     @dblclick="onDbl"
+                     @keydown="onKey"></div>
+            `
+        };
+
+        const ListPickerDialog = {
+            name: 'ListPickerDialog',
+            props: {
+                mode: { type: String, required: true }, // 'save' | 'load'
+                lists: { type: Object, default: () => ({}) },
+                allowCreate: { type: Boolean, default: false },
+                confirmLabel: { type: String, default: 'Confirm' }
+            },
+            emits: ['confirm', 'cancel', 'delete-list'],
+            setup(props, { emit }) {
+                const selectedNewSentinel = '__new__';
+                const selected = ref('');
+                const newName = ref('');
+                const option = ref(props.mode === 'save' ? 'overwrite' : 'replace'); // fixed modes
+                const useNew = Vue.computed(() => selected.value === selectedNewSentinel);
+                const listArray = Vue.computed(() => {
+                    const src = props.lists || {};
+                    return Object.keys(src)
+                        .map(name => ({ name, count: Array.isArray(src[name]?.files) ? src[name].files.length : 0 }))
+                        .sort((a, b) => a.name.localeCompare(b.name));
+                });
+
+                Vue.onMounted(() => {
+                    if (props.mode === 'load' && listArray.value.length) {
+                        selected.value = listArray.value[0].name;
+                    }
+                    if (props.mode === 'save') {
+                        if (listArray.value.length) {
+                            selected.value = listArray.value[0].name;
+                        } else {
+                            selected.value = selectedNewSentinel;
+                        }
+                    }
+                    document.addEventListener('keydown', onKey);
+                });
+                Vue.onUnmounted(() => document.removeEventListener('keydown', onKey));
+
+                Vue.watch(listArray, (arr) => {
+                    const names = new Set(arr.map(it => it.name));
+                    if (props.mode === 'load') {
+                        if (!names.has(selected.value)) selected.value = arr.length ? arr[0].name : '';
+                    } else {
+                        if (selected.value !== selectedNewSentinel && !names.has(selected.value)) {
+                            selected.value = arr.length ? arr[0].name : selectedNewSentinel;
+                        }
+                    }
+                });
+
+                function onKey(e) {
+                    if (e.key === 'Escape') emit('cancel');
+                    if (e.key === 'Enter' && canConfirm.value) doConfirm();
+                }
+                function doConfirm() {
+                    let listName, isNew;
+                    if (props.mode === 'save' && useNew.value) {
+                        listName = (newName.value || '').trim();
+                        isNew = true;
+                    } else {
+                        listName = selected.value;
+                        isNew = false;
+                    }
+                    if (!listName) return;
+                    emit('confirm', { mode: props.mode, listName, isNew, option: option.value });
+                }
+                function cancel() { emit('cancel'); }
+                function requestDelete(name){
+                    if (!name) return;
+                    emit('delete-list', name);
+                }
+                const canConfirm = Vue.computed(() => {
+                    if (props.mode === 'save') return useNew.value ? !!newName.value.trim() : (!!selected.value && selected.value !== selectedNewSentinel);
+                    return !!selected.value;
+                });
+
+                return { listArray, selected, selectedNewSentinel, useNew, newName, option, canConfirm, doConfirm, cancel, requestDelete };
+            },
+            template: `
+                <div class="list-picker-dialog" role="dialog" aria-modal="true">
+                    <div class="backdrop" @click="cancel"></div>
+                    <div class="dialog">
+                        <header>
+                            <div class="title">{{ mode === 'save' ? 'Save checked files to list' : 'Choose list' }}</div>
+                            <button @click="cancel" aria-label="Close">×</button>
+                        </header>
+                        <div class="body">
+                            <div v-if="mode === 'save'">
+                                <div style="max-height:240px; overflow:auto; margin-bottom:12px;padding-right: 5px;">
+                                    <div style="display:flex; align-items:center; gap:8px; padding:6px 0;">
+                                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; flex:1;">
+                                            <input type="radio" name="savelist" :value="selectedNewSentinel" v-model="selected">
+                                            <span>New list:</span>
+                                            <input v-model="newName" :disabled="!useNew" placeholder="Enter list name" style="flex:1; padding:6px 8px;">
+                                        </label>
+                                    </div>
+                                    <div v-for="it in listArray" :key="it.name" style="display:flex; align-items:center; gap:8px; padding:6px 0;">
+                                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; flex:1; min-width:0;">
+                                            <input type="radio" name="savelist" :value="it.name" v-model="selected">
+                                            <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ it.name }}</span>
+                                            <button class="small-button" @click.stop.prevent="requestDelete(it.name)" title="Delete list" aria-label="Delete list">x</button>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div v-else>
+                                <div v-if="listArray.length === 0" style="color:#666;">No lists available.</div>
+                                <div v-else style="max-height:240px; overflow:auto;">
+                                    <div v-for="it in listArray" :key="it.name" style="display:flex; align-items:center; gap:8px; padding:6px 0;">
+                                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; flex:1; min-width:0;">
+                                            <input type="radio" name="loadlist" :value="it.name" v-model="selected">
+                                            <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ it.name }}</span>
+                                            <button class="small-button" @click.stop.prevent="requestDelete(it.name)" title="Delete list" aria-label="Delete list">x</button>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <footer>
+                            <button @click="cancel" class="cancel">Cancel</button>
+                            <button :disabled="!canConfirm" @click="doConfirm" class="primary">
+                                {{ confirmLabel }}
+                            </button>
+                        </footer>
+                    </div>
+                </div>
+            `
+        };
+
+        const PathInput = {
+            name: 'PathInput',
+
+            props: {
+                modelValue: { type: String, default: '' },
+                recentPaths: { type: Array, default: () => [] },
+                placeholder: { type: String, default: 'Enter directory path' }
+            },
+
+            emits: ['update:modelValue', 'deleteRecentPath'],
+
+            setup(props, { emit }) {
+                // Refs
+                const root = Vue.ref(null);
+                const inputEl = Vue.ref(null);
+                const menuRef = Vue.ref(null);
+                const open = Vue.ref(false);
+
+                // Menu positioning state
+                const dropUp = Vue.ref(false);
+                const maxHeight = Vue.ref(320);
+                const coords = Vue.reactive({ left: 0, top: 0, width: 0 });
+
+                // Constants
+                const MAX_MENU_HEIGHT = 320;
+                const MIN_SPACE_THRESHOLD = 200;
+                const MENU_SPACING = 8;
+
+                // Event handlers
+                const handleInput = (e) => {
+                    emit('update:modelValue', e.target.value);
+                };
+
+                const computeMenuPosition = () => {
+                    const rect = inputEl.value?.getBoundingClientRect();
+                    if (!rect) return;
+
+                    coords.left = rect.left;
+                    coords.width = rect.width;
+
+                    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+                    const spaceBelow = Math.max(0, viewportHeight - rect.bottom - MENU_SPACING);
+                    const spaceAbove = Math.max(0, rect.top - MENU_SPACING);
+
+                    const shouldDropUp = spaceBelow < MIN_SPACE_THRESHOLD && spaceAbove > spaceBelow;
+                    dropUp.value = shouldDropUp;
+
+                    const availableSpace = shouldDropUp ? spaceAbove : spaceBelow;
+                    maxHeight.value = Math.min(MAX_MENU_HEIGHT, availableSpace);
+
+                    coords.top = shouldDropUp ? rect.top : rect.bottom;
+                };
+
+                const toggleMenu = (nextState = !open.value) => {
+                    open.value = nextState;
+                    if (open.value) {
+                        Vue.nextTick(computeMenuPosition);
+                    }
+                };
+
+                const selectPath = (path) => {
+                    emit('update:modelValue', path);
+                    open.value = false;
+                    inputEl.value?.focus?.();
+                };
+
+                const requestDeletePath = (path, event) => {
+                    event.stopPropagation();
+                    emit('deleteRecentPath', path);
+                };
+
+                const handleClickOutside = (e) => {
+                    const target = e.target;
+                    const isInsideRoot = root.value?.contains(target);
+                    const isInsideMenu = menuRef.value?.contains?.(target);
+
+                    if (!isInsideRoot && !isInsideMenu) {
+                        open.value = false;
+                    }
+                };
+
+                const handleKeydown = (e) => {
+                    if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        toggleMenu(true);
+                    } else if (e.key === 'Escape') {
+                        toggleMenu(false);
+                    }
+                };
+
+                const handleWindowChange = () => {
+                    if (open.value) {
+                        computeMenuPosition();
+                    }
+                };
+
+                // Computed
+                const menuStyle = Vue.computed(() => ({
+                    position: 'fixed',
+                    left: `${coords.left}px`,
+                    top: `${coords.top}px`,
+                    minWidth: `${coords.width}px`,
+                    maxHeight: `${maxHeight.value}px`,
+                    transform: dropUp.value ? 'translateY(-100%)' : 'none',
+                    overflowY: 'auto',
+                    zIndex: 2000
+                }));
+
+                const hasRecentPaths = Vue.computed(() => {
+                    return props.recentPaths && props.recentPaths.length > 0;
+                });
+
+                // Lifecycle
+                Vue.onMounted(() => {
+                    document.addEventListener('click', handleClickOutside, true);
+                    document.addEventListener('scroll', handleWindowChange, true);
+                    window.addEventListener('resize', handleWindowChange, true);
+                });
+
+                Vue.onUnmounted(() => {
+                    document.removeEventListener('click', handleClickOutside, true);
+                    document.removeEventListener('scroll', handleWindowChange, true);
+                    window.removeEventListener('resize', handleWindowChange, true);
+                });
+
+                return {
+                    // Refs
+                    root,
+                    inputEl,
+                    menuRef,
+                    open,
+                    // Methods
+                    handleInput,
+                    toggleMenu,
+                    selectPath,
+                    handleKeydown,
+                    requestDeletePath,
+                    // Computed
+                    menuStyle,
+                    hasRecentPaths
+                };
+            },
+
+            template: `
+                <div ref="root" class="path-input" @keydown="handleKeydown">
+                    <div class="row" style="position:relative; display:flex; align-items:center;">
+                        <input
+                            ref="inputEl"
+                            :value="modelValue"
+                            :placeholder="placeholder"
+                            @input="handleInput"
+                            style="flex:1; padding-right:28px;"
+                        />
+                        <button
+                            type="button"
+                            aria-haspopup="listbox"
+                            :aria-expanded="open ? 'true' : 'false'"
+                            title="Recent paths"
+                            @click="toggleMenu()"
+                            style="position:absolute; right:6px; top:50%; transform:translateY(-50%); border:none; background:transparent; cursor:pointer; line-height:1;"
+                        >▾</button>
+                    </div>
+
+                    <teleport to="body">
+                        <ul
+                            v-if="open && hasRecentPaths"
+                            ref="menuRef"
+                            role="listbox"
+                            class="path-menu"
+                            :style="menuStyle"
+                        >
+                            <li v-for="p in recentPaths" :key="p">
+                                <button type="button" @click="selectPath(p)"
+                                    :title="p"
+                                    style="display:block; width:100%; text-align:left; padding:8px 12px; margin:0; border:none; background:transparent; cursor:pointer;">
+                                    <div class="path-item">
+                                        <span class="path-text">{{ p }}</span>
+                                        <button
+                                            type="button"
+                                            class="delete-btn small-button"
+                                            @click="requestDeletePath(p, $event)"
+                                            title="Remove from recent paths"
+                                            aria-label="Remove">×</button>
+                                    </div>
+                                </button>
+                            </li>
+                        </ul>
+                    </teleport>
+                </div>
+            `
+        };
+
+        const LinksDialog = {
+            name: 'LinksDialog',
+            props: {
+                open: { type: Boolean, default: false },
+                mode: { type: String, default: 'relative' },
+                links: { type: String, default: '' },
+                loading: { type: Boolean, default: false }
+            },
+            emits: ['update:mode', 'close', 'copy'],
+            setup(props, { emit }) {
+                const textareaRef = ref(null);
+
+                function onModeChange(newMode) {
+                    emit('update:mode', newMode);
+                }
+
+                function onClose() {
+                    emit('close');
+                }
+
+                async function onCopy() {
+                    if (!props.links) return;
+
+                    try {
+                        await navigator.clipboard.writeText(props.links);
+                        emit('copy', true);
+                    } catch (err) {
+                        // Fallback
+                        if (textareaRef.value) {
+                            textareaRef.value.select();
+                            document.execCommand('copy');
+                            emit('copy', true);
+                        }
+                    }
+                }
+
+                function onKeyDown(e) {
+                    if (e.key === 'Escape') onClose();
+                }
+
+                onMounted(() => {
+                    document.addEventListener('keydown', onKeyDown);
+                });
+
+                onUnmounted(() => {
+                    document.removeEventListener('keydown', onKeyDown);
+                });
+
+                return { textareaRef, onModeChange, onClose, onCopy };
+            },
+            template: `
+                <div class="notification-overlay" role="dialog" aria-modal="true">
+                    <div class="backdrop" @click="onClose"></div>
+                    <div class="dialog" style="min-width: 600px; max-width: 800px;">
+                        <header class="dialog-header">
+                            <div class="dialog-header-title">File Links</div>
+                            <button @click="onClose" aria-label="Close"
+                                    style="font-size:20px; line-height:1; padding:6px 10px; border-radius:6px; border:1px solid #ddd; cursor:pointer;">×</button>
+                        </header>
+                        <div class="dialog-body" style="display: flex; flex-direction: column; gap: 12px;">
+                            <div style="display: flex; gap: 16px; align-items: center;">
+                                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                    <input type="radio" name="linkMode" value="relative"
+                                           :checked="mode === 'relative'"
+                                           @change="onModeChange('relative')">
+                                    <span>Relative</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                    <input type="radio" name="linkMode" value="full"
+                                           :checked="mode === 'full'"
+                                           @change="onModeChange('full')">
+                                    <span>Full</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                    <input type="radio" name="linkMode" value="ai"
+                                           :checked="mode === 'ai'"
+                                           @change="onModeChange('ai')">
+                                    <span>AI</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                    <input type="radio" name="linkMode" value="public"
+                                           :checked="mode === 'public'"
+                                           @change="onModeChange('public')">
+                                    <span>Public</span>
+                                </label>
+                            </div>
+
+                            <div v-if="loading" style="padding: 40px; text-align: center; color: #666;">
+                                Generating public links...
+                            </div>
+
+                            <textarea v-else
+                                      ref="textareaRef"
+                                      readonly
+                                      :value="links"
+                                      style="width: 100%; min-height: 300px; font-family: monospace; font-size: 13px;
+                                             padding: 10px; box-sizing: border-box; resize: vertical;"
+                                      placeholder="No files selected"></textarea>
+
+                            <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                                <button @click="onClose" style="padding: 8px 16px;">Close</button>
+                                <button @click="onCopy" :disabled="!links || loading"
+                                        style="padding: 8px 16px; background: #3b82f6; color: white; border-color: #3b82f6;">
+                                    Copy
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `
+        };
+
+        const LoginDialog = {
+            name: 'LoginDialog',
+            emits: ['login-success'],
+            setup(props, { emit }) {
+                const username = ref('');
+                const password = ref('');
+                const loading = ref(false);
+                const error = ref('');
+                const usernameInput = ref(null);
+
+                onMounted(() => {
+                    Vue.nextTick(() => {
+                        usernameInput.value?.focus();
+                    });
+                    document.addEventListener('keydown', onKeyDown);
+                });
+
+                onUnmounted(() => {
+                    document.removeEventListener('keydown', onKeyDown);
+                });
+
+                function onKeyDown(e) {
+                    if (e.key === 'Enter' && !loading.value) {
+                        handleLogin();
+                    }
+                }
+
+                async function handleLogin() {
+                    error.value = '';
+
+                    if (!username.value || !password.value) {
+                        error.value = 'Please enter username and password';
+                        return;
+                    }
+
+                    loading.value = true;
+
+                    try {
+                        const response = await axios.post('api.php', {
+                            action: 'login',
+                            username: username.value,
+                            password: password.value
+                        });
+
+                        if (response.data.success && response.data.data) {
+                            const { token, username: user, expires_at } = response.data.data;
+
+                            // Save to localStorage
+                            localStorage.setItem('auth_token', token);
+                            localStorage.setItem('auth_username', user);
+                            localStorage.setItem('auth_expires', expires_at);
+
+                            emit('login-success', { token, username: user });
+                            toast({ title: 'Login', message: `Welcome back, ${user}!`, level: 'success' });
+                        }
+                    } catch (e) {
+                        console.error('Login error:', e);
+                        error.value = e.response?.data?.error || 'Login failed. Please try again.';
+                    } finally {
+                        loading.value = false;
+                    }
+                }
+
+                return {
+                    username,
+                    password,
+                    loading,
+                    error,
+                    usernameInput,
+                    handleLogin
+                };
+            },
+            template: `
+                <div class="login-overlay">
+                    <div class="login-dialog">
+                        <header>
+                            <h2>🔐 Login Required</h2>
+                        </header>
+                        <div class="body">
+                            <div v-if="error" class="error-message">
+                                {{ error }}
+                            </div>
+                            <div class="form-group">
+                                <label for="username">Username</label>
+                                <input
+                                    id="username"
+                                    ref="usernameInput"
+                                    v-model="username"
+                                    type="text"
+                                    autocomplete="username"
+                                    :disabled="loading"
+                                    @keydown.enter="handleLogin"
+                                />
+                            </div>
+                            <div class="form-group">
+                                <label for="password">Password</label>
+                                <input
+                                    id="password"
+                                    v-model="password"
+                                    type="password"
+                                    autocomplete="current-password"
+                                    :disabled="loading"
+                                    @keydown.enter="handleLogin"
+                                />
+                            </div>
+                        </div>
+                        <footer>
+                            <button @click="handleLogin" :disabled="loading">
+                                {{ loading ? 'Logging in...' : 'Login' }}
+                            </button>
+                        </footer>
+                    </div>
+                </div>
+            `
+        };
+
+        const app = Vue.createApp({
+            components: {
+                AceEditor,
+                SearchResults,
+                ReplaceResults,
+                InputClearable,
+                NotificationViewer,
+                ToastViewer,
+                SplitButton,
+                PathInput,
+                MobileMenuButton,
+                MobileOverlay,
+                ResizeHandle,
+                ListPickerDialog,
+                RenameDialog,
+                DeleteConfirmDialog,
+                LinksDialog,
+                LoginDialog
+            },
+            setup() {
+                const mobileMenuOpen = ref(false);
+
+                function toggleMobileMenu() {
+                    mobileMenuOpen.value = !mobileMenuOpen.value;
+                }
+
+                function closeMobileMenu() {
+                    mobileMenuOpen.value = false;
+                }
+
+                // === AUTH STATE ===
+                const authToken = ref('');
+                const authUsername = ref('');
+                const showLoginDialog = ref(false);
+
+                const directoryPath = ref('');
+                const recentPaths = ref([]);
+                const showRecentPaths = ref(false);
+                const files = ref([]);
+                const selectedFiles = ref([]);
+                const checkedFiles = ref([]);
+                const expandedFiles = reactive({});
+                const checkedContentBlocks = reactive({});
+                const fileContents = ref([]);
+                const filterKeyword = ref('');
+                const middlePaneFilter = ref('');
+                const editingFile = ref('');
+                const editingContent = ref('');
+                const collapseLevel = ref(0);
+
+                const darkMode = ref(false);
+                // Search & Replace
+                const searchQuery = ref('');
+                const replaceQuery = ref('');
+                const searchResult = ref(null);
+                const replaceResult = ref(null);
+
+                // Middle pane width & resizing
+                const DEFAULT_MIDDLE = 460;
+                const minMiddle = 450;
+                const middleWidth = ref(DEFAULT_MIDDLE);
+
+                const DEFAULT_LEFT = 450;
+                const minLeft = 350;
+                const leftWidth = ref(DEFAULT_LEFT);
+
+                function computeMaxMiddle() {
+                    const vw = window.innerWidth || document.documentElement.clientWidth || 0;
+                    const minRight = 320;
+                    const maxByPct = vw * 0.65;
+                    const maxBySpace = vw - leftWidth.value - minRight;
+                    return Math.max(minMiddle, Math.min(maxByPct, maxBySpace));
+                }
+
+                function computeMaxLeft() {
+                    const vw = window.innerWidth || document.documentElement.clientWidth || 0;
+                    const minRight = 320;
+                    const maxByPct = vw * 0.5;
+                    const maxBySpace = vw - middleWidth.value - minRight;
+                    return Math.max(minLeft, Math.min(maxByPct, maxBySpace));
+                }
+
+                function onWindowResize(){
+                    // clamp left first, then middle based on new left
+                    leftWidth.value = Math.min(Math.max(leftWidth.value, minLeft), computeMaxLeft());
+                    middleWidth.value = Math.min(Math.max(middleWidth.value, minMiddle), computeMaxMiddle());
+                }
+
+                const state = computed(() => ({
+                    directoryPath: directoryPath.value,
+                    recentPaths: recentPaths.value,
+                    filterKeyword: filterKeyword.value,
+                    files: files.value,
+                    selectedFiles: selectedFiles.value,
+                    selectedFilesSnapshot: selectedFilesSnapshot.value,
+                    checkedFiles: checkedFiles.value,
+                    fileContents: fileContents.value,
+                    editingFile: editingFile.value,
+                    editingContent: editingContent.value,
+                    collapseLevel: collapseLevel.value,
+                    searchQuery: searchQuery.value,
+                    replaceQuery: replaceQuery.value,
+                    searchResult: searchResult.value,
+                    replaceResult: replaceResult.value,
+                    middleWidth: middleWidth.value,
+                    leftWidth: leftWidth.value,
+                    darkMode: darkMode.value
+                }));
+
+                // ===== Lists store (persisted separately) =====
+                const fileLists = ref({}); // { [name]: { files: string[], createdAt, updatedAt } }
+                const listDialog = reactive({
+                    open: false,
+                    mode: 'save'            // 'save' | 'load'
+                });
+                const linksDialog = reactive({
+                    open: false,
+                    mode: 'relative', // 'relative' | 'full' | 'public' | 'ai'
+                    links: '',
+                    loading: false
+                });
+                const LIMITS = Object.freeze({ MAX_LISTS: 50, MAX_FILES_PER_LIST: 1000 });
+                const LISTS_KEY = 'directory-structure-viewer:lists';
+                function uniq(arr){ return Array.from(new Set(arr || [])); }
+                // Rename/Delete dialog state
+                const renameDialog = reactive({
+                    open: false,
+                    filePath: ''
+                });
+                const deleteRecentPathDialog = reactive({
+                    open: false,
+                    path: '',
+                    message: ''
+                });
+                const deleteDialog = reactive({
+                    open: false,
+                    filePath: '',
+                    message: ''
+                });
+
+                function loadListsFromStorage() {
+                    try {
+                        const raw = localStorage.getItem(LISTS_KEY);
+                        const obj = raw ? JSON.parse(raw) : {};
+                        fileLists.value = obj && typeof obj === 'object' ? obj : {};
+                    } catch { fileLists.value = {}; }
+                }
+                function saveListsToStorage() {
+                    try { localStorage.setItem(LISTS_KEY, JSON.stringify(fileLists.value || {})); } catch {}
+                }
+
+                // === AXIOS INTERCEPTOR ===
+                function setupAxiosInterceptor() {
+                    // Request interceptor - add token
+                    axios.interceptors.request.use(
+                        config => {
+                            if (authToken.value) {
+                                config.headers.Authorization = `Bearer ${authToken.value}`;
+                            }
+                            return config;
+                        },
+                        error => Promise.reject(error)
+                    );
+
+                    // Response interceptor - handle 401
+                    axios.interceptors.response.use(
+                        response => response,
+                        error => {
+                            if (error.response?.status === 401) {
+                                handleLogout();
+                                toast({
+                                    title: 'Session Expired',
+                                    message: 'Please login again',
+                                    level: 'warn'
+                                });
+                            }
+                            return Promise.reject(error);
+                        }
+                    );
+                }
+
+                // === AUTH FUNCTIONS ===
+                function checkAuth() {
+                    const token = localStorage.getItem('auth_token');
+                    const username = localStorage.getItem('auth_username');
+                    const expires = parseInt(localStorage.getItem('auth_expires') || '0');
+
+                    if (token && username && expires > Date.now() / 1000) {
+                        authToken.value = token;
+                        authUsername.value = username;
+                        showLoginDialog.value = false;
+                        document.body.classList.remove('auth-required');
+                        document.body.classList.remove('auth-checking');
+                        return true;
+                    } else {
+                        // Token expired or invalid
+                        clearAuth();
+                        showLoginDialog.value = true;
+                        document.body.classList.add('auth-required');
+                        document.body.classList.remove('auth-checking');
+                        return false;
+                    }
+                }
+
+                function clearAuth() {
+                    authToken.value = '';
+                    authUsername.value = '';
+                    localStorage.removeItem('auth_token');
+                    localStorage.removeItem('auth_username');
+                    localStorage.removeItem('auth_expires');
+                    document.body.classList.add('auth-required');
+                    document.body.classList.remove('auth-checking');
+                }
+
+                function handleLoginSuccess({ token, username }) {
+                    authToken.value = token;
+                    authUsername.value = username;
+                    showLoginDialog.value = false;
+                    document.body.classList.remove('auth-required');
+                }
+
+                async function handleLogout() {
+                    try {
+                        await axios.post('api.php', { action: 'logout' });
+                    } catch (e) {
+                        console.error('Logout error:', e);
+                    } finally {
+                        clearAuth();
+                        showLoginDialog.value = true;
+                        document.body.classList.add('auth-required');
+                    }
+                }
+
+                const filteredFiles = computed(() => {
+                    let list = files.value;
+                    const raw = (filterKeyword.value || '').trim();
+
+                    if (!raw) return list;
+
+                    const tokens = raw.split(/[\s,]+/).filter(Boolean);
+
+                    const includes = [];
+                    const excludes = [];
+
+                    for (const tok of tokens) {
+                        if (tok.startsWith('-') && tok.length > 1) {
+                            excludes.push(tok.slice(1).toLowerCase());
+                        } else {
+                            includes.push(tok.toLowerCase());
+                        }
+                    }
+
+                    // Helper: tạo matcher từ keyword có thể chứa '*'
+                    const toMatcher = (kw) => {
+                        if (kw.includes('*')) {
+                            const esc = kw.replace(/[-\/\\^$+?.()|[\]{}]/g, '\\$&');
+                            const pattern = new RegExp(esc.replace(/\*/g, '.*'), 'i');
+                            return (path) => pattern.test(path);
+                        } else {
+                            return (path) => path.includes(kw);
+                        }
+                    };
+
+                    const includeMatchers = includes.map(toMatcher);
+                    const excludeMatchers = excludes.map(toMatcher);
+
+                    if (includeMatchers.length) {
+                        list = list.filter(file => {
+                            const path = file.path.toLowerCase();
+                            // OR: chỉ cần khớp 1 include
+                            return includeMatchers.some(fn => fn(path));
+                        });
+                    }
+
+                    if (excludeMatchers.length) {
+                        list = list.filter(file => {
+                            const path = file.path.toLowerCase();
+                            // Loại nếu khớp bất kỳ exclude
+                            return !excludeMatchers.some(fn => fn(path));
+                        });
+                    }
+
+                    return list;
+                });
+
+                const filteredMiddlePaneItems = computed(() => {
+                    // Step 1: Map selected paths to typed objects
+                    const items = selectedFilesForMiddle.value || [];
+                    const itemsWithType = items.map(path => {
+                        const file = files.value.find(f => f.path === path);
+                        if (file) return file;
+
+                        const prefix = path.endsWith('/') ? path : path + '/';
+                        const hasChildren = files.value.some(f => f.path.startsWith(prefix));
+                        return { path, type: hasChildren ? 'directory' : 'file' };
+                    });
+
+                    // Step 2: Apply filter if exists
+                    let result = itemsWithType;
+                    const filterText = (middlePaneFilter.value || '').trim();
+
+                    if (filterText) {
+                        const tokens = filterText.split(/[\s,]+/).filter(Boolean);
+                        const includes = tokens.filter(t => !t.startsWith('-') || t.length === 1);
+                        const excludes = tokens.filter(t => t.startsWith('-') && t.length > 1).map(t => t.slice(1));
+
+                        const toMatcher = (kw) => {
+                            const lower = kw.toLowerCase();
+                            if (lower.includes('*')) {
+                                const pattern = new RegExp(lower.replace(/[-\/\\^$+?.()|[\]{}]/g, '\\$&').replace(/\*/g, '.*'), 'i');
+                                return (path) => pattern.test(path);
+                            }
+                            return (path) => path.includes(lower);
+                        };
+
+                        const includeMatchers = includes.map(toMatcher);
+                        const excludeMatchers = excludes.map(toMatcher);
+
+                        result = result.filter(item => {
+                            const rel = getRelativePath(item.path).toLowerCase();
+                            const included = !includeMatchers.length || includeMatchers.some(fn => fn(rel));
+                            const excluded = excludeMatchers.some(fn => fn(rel));
+                            return included && !excluded;
+                        });
+                    }
+
+                    // Step 3: Derive parent directories
+                    const basePath = recentPaths.value[0] || '';
+                    const resultPaths = result.map(item => item.path);
+                    const directoriesSet = new Set();
+
+                    for (const path of resultPaths) {
+                        let current = path;
+                        while (true) {
+                            const lastSlash = current.lastIndexOf('/');
+                            if (lastSlash === -1) break;
+
+                            const parent = current.substring(0, lastSlash);
+                            if (basePath && (!parent.startsWith(basePath) || parent.length <= basePath.length)) break;
+
+                            const prefix = parent + '/';
+                            if (resultPaths.some(p => p.startsWith(prefix))) {
+                                directoriesSet.add(parent);
+                                current = parent;
+                            } else break;
+                        }
+                    }
+
+                    // Step 4: Add directories with >= 2 direct children
+                    const isDirectChild = (parentPath, childPath) => {
+                        const prefix = parentPath + '/';
+                        if (!childPath.startsWith(prefix)) return false;
+                        const remainder = childPath.substring(prefix.length);
+                        return !remainder.includes('/');
+                    };
+
+                    directoriesSet.forEach(dirPath => {
+                        const children = [
+                            ...resultPaths.filter(p => isDirectChild(dirPath, p)),
+                            ...Array.from(directoriesSet).filter(d => d !== dirPath && isDirectChild(dirPath, d))
+                        ];
+
+                        if (children.length >= 2 && !result.find(item => item.path === dirPath)) {
+                            const file = files.value.find(f => f.path === dirPath);
+                            result.push(file || { path: dirPath, type: 'directory' });
+                        }
+                    });
+
+                    // Step 5: Sort hierarchically
+                    result.sort((a, b) => {
+                        const aParts = a.path.split(/[\/\\]/).filter(Boolean);
+                        const bParts = b.path.split(/[\/\\]/).filter(Boolean);
+                        const minLen = Math.min(aParts.length, bParts.length);
+
+                        for (let i = 0; i < minLen; i++) {
+                            if (aParts[i] !== bParts[i]) return aParts[i].localeCompare(bParts[i]);
+                        }
+
+                        if (aParts.length !== bParts.length) return aParts.length - bParts.length;
+                        if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
+                        return 0;
+                    });
+
+                    return result;
+                });
+
+                const hasCheckedVisibleFiles = computed(() => {
+                    const visibleFiles = new Set(
+                        filteredMiddlePaneItems.value
+                            .filter(item => item.type === 'file')
+                            .map(item => item.path)
+                    );
+                    return checkedFiles.value.some(p => visibleFiles.has(p));
+                });
+
+                const selectedFilesSnapshot = ref([]);
+                const selectedFilesForMiddle = computed(() => {
+                    const merged = new Set([...(selectedFilesSnapshot.value || []), ...(selectedFiles.value || [])]);
+                    return Array.from(merged);
+                });
+
+                const selectedFilesNonDir = computed(() => {
+                    return selectedFilesForMiddle.value
+                        .map(p => files.value.find(f => f.path === p))
+                        .filter(Boolean)
+                        .filter(f => f.type === 'file')
+                        .map(f => f.path);
+                });
+
+                const checkedFilesNonDir = computed(() => {
+                    const set = new Set(checkedFiles.value);
+                    return files.value
+                        .filter(f => f.type === 'file' && set.has(f.path))
+                        .map(f => f.path);
+                });
+
+                const checkedFilesNonDirText = computed(() => {
+                    const set = new Set(checkedFiles.value);
+                    return files.value
+                        .filter(f => f.type === 'file' && set.has(f.path) && isTextFile(f.path))
+                        .map(f => f.path);
+                });
+
+                const renderDirectoryTree = (items) => {
+                    // Build trie but root at directoryPath (relative root)
+                    const base = String(directoryPath.value || '').replace(/[\/\\]+$/, '');
+                    const baseWithSep = base ? base + '/' : '';
+
+                    const paths = (items || [])
+                        .map(x => typeof x === 'string' ? x : (x?.type === 'file' || !x?.type) ? x?.path : null)
+                        .filter(Boolean)
+                        .map(p => {
+                            // relativize to directoryPath if under it; else keep as-is
+                            if (base && (p === base || p.startsWith(baseWithSep))) {
+                                return p.slice(base.length).replace(/^[\/\\]/, '');
+                            }
+                            return p;
+                        });
+
+                    const root = new Map(); // Map<segment, Map>
+                    for (const p of paths) {
+                        const parts = String(p).split(/[\/\\]+/).filter(Boolean);
+                        let node = root;
+                        for (const seg of parts) {
+                            if (!node.has(seg)) node.set(seg, new Map());
+                            node = node.get(seg);
+                        }
+                    }
+
+                    const render = (node, indent = '') => {
+                        let out = '';
+                        const entries = Array.from(node.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+                        for (const [name, child] of entries) {
+                            out += `${indent}├── ${name}\n`;
+                            if (child && child.size) out += render(child, `${indent}│   `);
+                        }
+                        return out;
+                    };
+                    return render(root);
+                };
+
+                const mergeContent = computed(() => {
+                    if (!Array.isArray(fileContents.value)) return '';
+                    let content = '';
+                    for (let i = 0; i < fileContents.value.length; i++) {
+                        const item = fileContents.value[i];
+                        content += "============================================\n";
+                        content += 'File: ' + getRelativePath(item.path) + "\n";
+                        content += "============================================\n";
+                        content += "```\n";
+                        content += item.content + "\n";
+                        content += "```\n\n";
+                    }
+                    return content;
+                });
+
+                watch(state, debounce(() => { saveStateToLocalStorage(); }, 1000));
+
+                watch(fileContents, () => {
+                    editingFile.value = '';
+                    editingContent.value = '';
+                });
+
+                watch(collapseLevel, (newValue) => {
+                    if (newValue === 1) {
+                        document.body.classList.toggle('collapse-1');
+                    } else if (newValue === 2) {
+                        document.body.classList.toggle('collapse-2');
+                    } else if (newValue === 0) {
+                        document.body.classList.remove('collapse-1');
+                        document.body.classList.remove('collapse-2');
+                    }
+                });
+
+                watch(darkMode, (newValue) => {
+                    if (newValue) {
+                        document.body.classList.add('dark-mode');
+                    } else {
+                        document.body.classList.remove('dark-mode');
+                    }
+                });
+
+                onMounted(() => {
+                    document.body.classList.add('auth-checking');
+                    setupAxiosInterceptor();
+                    checkAuth();
+                    document.body.classList.remove('auth-checking');
+                    loadStateFromLocalStorage();
+                    // clamp with current viewport
+                    leftWidth.value = Math.min(Math.max(leftWidth.value, minLeft), computeMaxLeft());
+                    middleWidth.value = Math.min(Math.max(middleWidth.value, minMiddle), computeMaxMiddle());
+                    window.addEventListener('resize', onWindowResize, true);
+                    loadListsFromStorage();
+
+                    if (darkMode.value) {
+                        document.body.classList.add('dark-mode');
+                    }
+                });
+
+                onUnmounted(() => {
+                    window.removeEventListener('resize', onWindowResize, true);
+                });
+
+                function saveStateToLocalStorage() {
+                    localStorage.setItem('directory-structure-viewer', JSON.stringify(state.value));
+                }
+                function loadStateFromLocalStorage() {
+                    const saved = JSON.parse(localStorage.getItem('directory-structure-viewer')) || {};
+                    directoryPath.value = saved.directoryPath || '';
+                    recentPaths.value = saved.recentPaths || [];
+                    filterKeyword.value = saved.filterKeyword || '';
+                    files.value = saved.files || [];
+                    selectedFiles.value = saved.selectedFiles || [];
+                    selectedFilesSnapshot.value = saved.selectedFilesSnapshot || [];
+                    checkedFiles.value = saved.checkedFiles || [];
+                    fileContents.value = saved.fileContents || [];
+                    editingFile.value = saved.editingFile || '';
+                    editingContent.value = saved.editingContent || '';
+                    collapseLevel.value = saved.collapseLevel || 0;
+                    searchQuery.value = saved.searchQuery || '';
+                    replaceQuery.value = saved.replaceQuery || '';
+                    searchResult.value = saved.searchResult ?? null;
+                    replaceResult.value = saved.replaceResult ?? null;
+                    leftWidth.value = Math.min(
+                        Math.max(Number(saved.leftWidth) || DEFAULT_LEFT, minLeft),
+                        computeMaxLeft()
+                    );
+                    darkMode.value = saved.darkMode || false;
+                    middleWidth.value = Math.min(
+                        Math.max(Number(saved.middleWidth) || DEFAULT_MIDDLE, minMiddle),
+                        computeMaxMiddle()
+                    );
+                }
+
+                function addRecentPath(path) {
+                    const updated = [path, ...recentPaths.value.filter(p => p !== path)];
+                    recentPaths.value = updated.slice(0, 5);
+                }
+
+                async function analyzeDirectory() {
+                    if (!directoryPath.value) {
+                        notify({ title: 'Analyze directory', message: 'Please enter a directory path.', level: 'warn' });
+                        return;
+                    }
+                    try {
+                        const response = await axios.post('api.php', { action: 'list_files', path: directoryPath.value });
+                        files.value = response.data.files || [];
+                        addRecentPath(directoryPath.value);
+                    } catch (e) { console.error('Error fetching files:', e); }
+                }
+
+                function isExpandableFile(file) {
+                    const exts = ['.php','.js','.vue','.html','.tpl','.md'];
+                    const lower = file.toLowerCase();
+                    return exts.some(ext => lower.endsWith(ext));
+                }
+
+                function toggleDirectorySelection(dirPath, checked) {
+                    const prefix = dirPath.endsWith('/') ? dirPath : dirPath + '/';  
+                    if (checked) {
+                        const toAdd = new Set(selectedFiles.value);
+                        toAdd.add(dirPath);
+                        for (const item of filteredFiles.value) {
+                            if (item.path.startsWith(prefix)) toAdd.add(item.path);
+                        }
+                        selectedFiles.value = Array.from(toAdd);
+                    } else {
+                        selectedFiles.value = selectedFiles.value.filter(p => p !== dirPath && !p.startsWith(prefix));
+                    }
+                }
+
+                function isDirectoryCheckedInMiddle(dirPath) {
+                    const prefix = dirPath.endsWith('/') ? dirPath : dirPath + '/';
+
+                    // Chỉ xét files VISIBLE trong filteredMiddlePaneItems
+                    const visibleFilesInDir = filteredMiddlePaneItems.value
+                        .filter(item => item.type === 'file' && item.path.startsWith(prefix))
+                        .map(item => item.path);
+
+                    // Nếu không có file nào visible, coi như unchecked
+                    if (visibleFilesInDir.length === 0) return false;
+
+                    const checkedSet = new Set(checkedFiles.value);
+                    return visibleFilesInDir.every(p => checkedSet.has(p));
+                }
+
+                function toggleDirectoryCheckInMiddle(dirPath, checked) {
+                    const prefix = dirPath.endsWith('/') ? dirPath : dirPath + '/';
+
+                    // Chỉ xét files VISIBLE trong filteredMiddlePaneItems
+                    const visibleFilesInDir = filteredMiddlePaneItems.value
+                        .filter(item => item.type === 'file' && item.path.startsWith(prefix))
+                        .map(item => item.path);
+
+                    if (checked) {
+                        const toAdd = new Set(checkedFiles.value);
+                        visibleFilesInDir.forEach(p => toAdd.add(p));
+                        checkedFiles.value = Array.from(toAdd);
+                    } else {
+                        const toRemove = new Set(visibleFilesInDir);
+                        checkedFiles.value = checkedFiles.value.filter(p => !toRemove.has(p));
+                    }
+                }
+
+                async function expandFile(file) {
+                    if (!expandedFiles[file]) {
+                        try {
+                            const response = await axios.post('api.php', { action: 'list_content_blocks', path: file });
+                            expandedFiles[file] = response.data.blocks || [];
+                            checkedContentBlocks[file] = [];
+                        } catch (e) { console.error('Error fetching file blocks:', e); }
+                    } else {
+                        delete expandedFiles[file];
+                        delete checkedContentBlocks[file];
+                    }
+                }
+
+                function getBlockName({ signature, lineNumber }) {
+                    const regex = /^(?:function|const|let|var)?\s*(\w+)\s*(?:=\s*(?:async\s*)?\(|(?:async\s*)?\(|\(|=)/;
+                    const match = signature.match(regex);
+                    const name = match ? match[1] : signature;
+                    return `${name} : ${lineNumber}`;
+                }
+
+                async function viewFiles() {
+                    if (!checkedFilesNonDir.value.length) {
+                        notify({ title: 'View files', message: 'Please check at least one file.', level: 'warn' });
+                        return;
+                    }
+                    try {
+                        const response = await axios.post('api.php', {
+                            action: 'get_file_contents',
+                            paths: checkedFilesNonDir.value,
+                            blocks: checkedContentBlocks
+                        });
+                        fileContents.value = response.data.contents || [];
+                        searchResult.value = null;
+                        replaceResult.value = null;
+                    } catch (e) { console.error('Error fetching file contents:', e); }
+                }
+
+                async function viewFilesOutline() {
+                    if (!checkedFilesNonDir.value.length) {
+                        notify({ title: 'View files', message: 'Please check at least one file.', level: 'warn' });
+                        return;
+                    }
+                    try {
+                        const response = await axios.post('api.php', {
+                            action: 'get_file_contents_outline',
+                            paths: checkedFilesNonDir.value
+                        });
+                        fileContents.value = response.data.contents || [];
+                        searchResult.value = null;
+                        replaceResult.value = null;
+                    } catch (e) { console.error('Error fetching file contents:', e); }
+                }
+
+                function onPrimary(file) {
+                    if (kindOf(file) === 'text') return viewSingleFile(file);
+                    return downloadSingle(file);
+                }
+
+                function getMenuItems(file) {
+                    if (kindOf(file) === 'text') {
+                        const items = [];
+                        if (isExpandableFile(file)) items.push({ label: 'List', action: () => expandFile(file) });
+                        items.push(
+                            { label: 'Outline', action: () => viewSingleFileOutline(file) },
+                            { label: 'Edit', action: () => editFile(file) },
+                            { label: 'Rename', action: () => renameFile(file) },
+                            { label: 'Download', action: () => downloadSingle(file) },
+                            { label: 'Delete', action: () => deleteFile(file) }
+                        );
+                        return items;
+                    }
+                    return [
+                        { label: 'Rename', action: () => renameFile(file) },
+                        { label: 'Download', action: () => downloadSingle(file) },
+                        { label: 'Delete', action: () => deleteFile(file) }
+                    ];
+                }
+
+                async function downloadSingle(path) {
+                    try {
+                        const res = await axios.post('api.php', {
+                            action: 'download_files',
+                            paths: [path],
+                            blocks: {}
+                        }, {
+                            responseType: 'blob'
+                        });
+                        const blob = new Blob([res.data]);
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = path.split('/').pop();
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        URL.revokeObjectURL(url);
+                    } catch (e) {
+                        console.error(e);
+                        notify({
+                            title: 'Download failed',
+                            message: `Could not download ${getRelativePath(path)}. ${formatAxiosError(e)}`,
+                            level: 'error'
+                        });
+                    }
+                }
+
+                async function downloadFiles() {
+                    if (!checkedFilesNonDir.value.length) {
+                        notify({ title: 'Download', message: 'Please check at least one file.', level: 'warn' });
+                        return;
+                    }
+
+                    try {
+                        const response = await axios.post(
+                            'api.php',
+                            {
+                                action: 'download_files',
+                                paths: checkedFilesNonDir.value,
+                                blocks: checkedContentBlocks
+                            },
+                            { responseType: 'blob' }
+                        );
+
+                        const blob = new Blob([response.data], { type: 'application/zip' });
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `downloaded_files_${new Date().toISOString().replace(/[:.]/g, '-')}.zip`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        window.URL.revokeObjectURL(url);
+                    } catch (e) {
+                        console.error('Error downloading files:', e);
+                        notify({ title: 'Download', message: `Failed to download files. ${formatAxiosError(e)}`, level: 'error' });
+                    }
+                }
+
+                function updateCheckedFiles(file, block) {
+                    const blockIndex = checkedContentBlocks[file].indexOf(block.offset);
+                    if (blockIndex !== -1) {
+                        if (!checkedFiles.value.includes(file)) checkedFiles.value.push(file);
+                    } else {
+                        if (checkedContentBlocks[file].length === 0) {
+                            const fileIndex = checkedFiles.value.indexOf(file);
+                            if (fileIndex !== -1) checkedFiles.value.splice(fileIndex, 1);
+                        }
+                    }
+                }
+                function ensureParentBlocksChecked(file, block) {
+                    if (!block.parentOffsets || block.parentOffsets.length === 0) return;
+                    const fileBlocks = expandedFiles[file]; if (!fileBlocks) return;
+                    for (const parentOffset of block.parentOffsets) {
+                        const parentBlock = fileBlocks.find(b => b.offset === parentOffset);
+                        if (parentBlock) {
+                            if (!checkedContentBlocks[file]) checkedContentBlocks[file] = [];
+                            if (!checkedContentBlocks[file].includes(parentOffset)) checkedContentBlocks[file].push(parentOffset);
+                        }
+                    }
+                }
+                function onClickContentBlock(file, block) { updateCheckedFiles(file, block); ensureParentBlocksChecked(file, block); }
+
+                function checkAllFiles() {
+                    // Chỉ check các FILES (không phải directories) trong filtered list
+                    const filesToCheck = filteredMiddlePaneItems.value
+                        .filter(item => item.type === 'file')
+                        .map(item => item.path);
+
+                    const toAdd = new Set(checkedFiles.value);
+                    filesToCheck.forEach(p => toAdd.add(p));
+                    checkedFiles.value = Array.from(toAdd);
+                }
+
+                function clearCheckedFiles() {
+                    // Chỉ uncheck các FILES trong filtered list
+                    const filesToUncheck = new Set(
+                        filteredMiddlePaneItems.value
+                            .filter(item => item.type === 'file')
+                            .map(item => item.path)
+                    );
+                    checkedFiles.value = checkedFiles.value.filter(p => !filesToUncheck.has(p));
+
+                    // Cleanup blocks cho những files bị uncheck
+                    for (const file of filesToUncheck) {
+                        if (checkedContentBlocks[file]) {
+                            checkedContentBlocks[file] = [];
+                        }
+                    }
+
+                    // Chỉ clear fileContents và search results nếu không còn file nào checked
+                    if (checkedFiles.value.length === 0) {
+                        fileContents.value = [];
+                    }
+
+                    searchResult.value = null;
+                    replaceResult.value = null;
+                }
+                function clearSelectedFiles() {
+                    selectedFilesSnapshot.value = [];   // xóa snapshot
+                    selectedFiles.value = [];           // và cả left hiện thời
+                    checkedFiles.value = [];
+                    fileContents.value = [];
+                    for (const file in checkedContentBlocks) { checkedContentBlocks[file] = []; }
+                    searchResult.value = null;
+                    replaceResult.value = null;
+                }
+                function removeSelectedFile(file) {
+                    if (!file) return;
+
+                    const item = files.value.find(f => f.path === file);
+                    const isDir = item?.type === 'directory';
+
+                    if (isDir) {
+                        const prefix = file.endsWith('/') ? file : file + '/';
+                        const filesInDir = files.value
+                            .filter(f => f.type === 'file' && f.path.startsWith(prefix))
+                            .map(f => f.path);
+
+                        // Remove from selections
+                        selectedFiles.value = selectedFiles.value.filter(p =>
+                            p !== file && !p.startsWith(prefix)
+                        );
+                        selectedFilesSnapshot.value = selectedFilesSnapshot.value.filter(p =>
+                            p !== file && !p.startsWith(prefix)
+                        );
+
+                        // Uncheck all
+                        const toRemove = new Set([file, ...filesInDir]);
+                        checkedFiles.value = checkedFiles.value.filter(p => !toRemove.has(p));
+
+                        // Cleanup blocks and editing state for all files in directory
+                        filesInDir.forEach(fp => {
+                            if (expandedFiles[fp]) delete expandedFiles[fp];
+                            if (checkedContentBlocks[fp]) delete checkedContentBlocks[fp];
+
+                            // Close editor if editing any file in this directory
+                            if (editingFile.value === fp) {
+                                editingFile.value = '';
+                                editingContent.value = '';
+                            }
+                        });
+
+                        // Remove from fileContents
+                        if (Array.isArray(fileContents.value) && fileContents.value.length) {
+                            fileContents.value = fileContents.value.filter(item =>
+                                !toRemove.has(item?.path)
+                            );
+                        }
+                    } else {
+                        selectedFiles.value = (selectedFiles.value || []).filter(p => p !== file);
+                        selectedFilesSnapshot.value = (selectedFilesSnapshot.value || []).filter(p => p !== file);
+
+                        checkedFiles.value = (checkedFiles.value || []).filter(p => p !== file);
+
+                        if (expandedFiles[file]) delete expandedFiles[file];
+                        if (checkedContentBlocks[file]) delete checkedContentBlocks[file];
+
+                        if (editingFile.value === file) {
+                            editingFile.value = '';
+                            editingContent.value = '';
+                        }
+
+                        if (Array.isArray(fileContents.value) && fileContents.value.length) {
+                            fileContents.value = fileContents.value.filter(i => i?.path !== file);
+                        }
+                    }
+                }
+
+                // ===== Save/Load list actions =====
+                function openSaveListDialog() {
+                    if (!checkedFilesNonDir.value.length) {
+                        toast({ title: 'Save to list', message: 'No checked files.', level: 'warn' });
+                        return;
+                    }
+                    listDialog.mode = 'save';
+                    listDialog.open = true;
+                }
+                function openLoadFromListDialog() {
+                    if (!Object.keys(fileLists.value || {}).length) {
+                        toast({ title: 'Load from list', message: 'No lists available.', level: 'info' });
+                        return;
+                    }
+                    listDialog.mode = 'load';
+                    listDialog.open = true;
+                }
+                function closeListDialog() { listDialog.open = false; }
+
+                function handleListConfirm({ mode, listName, isNew, option }) {
+                    const name = String(listName || '').trim();
+                    if (!name) { toast({ title: 'List', message: 'List name is required.', level: 'warn' }); return; }
+                    if (mode === 'save') {
+                        const exists = !!fileLists.value[name];
+                        if (isNew && exists) {
+                            toast({ title: 'Save to list', message: 'List already exists.', level: 'error' });
+                            return;
+                        }
+                        if (isNew && !exists && Object.keys(fileLists.value).length >= LIMITS.MAX_LISTS) {
+                            toast({ title: 'Save to list', message: 'List limit reached.', level: 'error' });
+                            return;
+                        }
+                        const now = Date.now();
+                        const src = uniq(checkedFilesNonDir.value).slice(0, LIMITS.MAX_FILES_PER_LIST);
+                        // Overwrite mode by default
+                        const merged = src;
+                        const createdAt = exists ? (fileLists.value[name]?.createdAt || now) : now;
+                        fileLists.value = { ...fileLists.value, [name]: { files: merged, createdAt, updatedAt: now } };
+                        saveListsToStorage();
+                        closeListDialog();
+                        return;
+                    }
+                    // load
+                    if (!fileLists.value[name] || !Array.isArray(fileLists.value[name].files)) {
+                        toast({ title: 'Load from list', message: 'Selected list not found.', level: 'error' });
+                        return;
+                    }
+                    const saved = fileLists.value[name].files || [];
+                    const existing = new Set(
+                        (files.value || []).filter(f => f?.type === 'file').map(f => f.path)
+                    );
+                    const toLoad = saved.filter(p => existing.has(p));
+                    const skipped = saved.length - toLoad.length;
+                    // always replace
+                    const keep = new Set(toLoad);
+                    checkedFiles.value = [...keep];
+                    selectedFilesSnapshot.value = uniq([...(selectedFilesSnapshot.value || []), ...toLoad]);
+                    // clear block selections of files not in keep
+                    for (const k of Object.keys(checkedContentBlocks)) {
+                        if (!keep.has(k)) delete checkedContentBlocks[k];
+                    }
+                    saveStateToLocalStorage();
+                    closeListDialog();
+                }
+                function handleListDelete(name) {
+                    const n = String(name || '').trim();
+                    if (!n) return;
+                    if (!fileLists.value[n]) {
+                        toast({ title: 'Delete list', message: 'List not found.', level: 'error' });
+                        return;
+                    }
+                    const next = { ...(fileLists.value || {}) };
+                    delete next[n];
+                    fileLists.value = next;
+                    saveListsToStorage();
+                    if (!Object.keys(next).length && listDialog.mode === 'load') listDialog.open = false;
+                }
+                async function viewSingleFile(file) {
+                    try {
+                        const response = await axios.post('api.php', { action: 'get_file_contents', paths: [file], blocks: checkedContentBlocks });
+                        fileContents.value = response.data.contents || [];
+                        searchResult.value = null;
+                        replaceResult.value = null;
+                    } catch (e) { console.error('Error fetching file contents:', e); }
+                }
+
+                async function viewSingleFileOutline(file) {
+                    try {
+                        const response = await axios.post('api.php', { action: 'get_file_contents_outline', paths: [file] });
+                        fileContents.value = response.data.contents || [];
+                        searchResult.value = null;
+                        replaceResult.value = null;
+                    } catch (e) { console.error('Error fetching file contents:', e); }
+                }
+
+                async function editFile(file) {
+                    try {
+                        editingFile.value = file;
+                        const response = await axios.post('api.php', { action: 'get_file_content', path: file });
+                        editingContent.value = response.data.content || '';
+                    } catch (e) { console.error('Error fetching file content:', e); }
+                }
+
+                function renameFile(file) {
+                    renameDialog.filePath = file;
+                    renameDialog.open = true;
+                }
+
+                async function handleRenameConfirm(newName) {
+                    const oldPath = renameDialog.filePath;
+                    if (!oldPath || !newName) return;
+
+                    try {
+                        const response = await axios.post('api.php', {
+                            action: 'rename_file',
+                            path: oldPath,
+                            new_name: newName
+                        });
+
+                        if (response.data.success && response.data.new_path) {
+                            const newPath = response.data.new_path;
+
+                            // Update files array
+                            const fileIndex = files.value.findIndex(f => f.path === oldPath);
+                            if (fileIndex !== -1) {
+                                files.value[fileIndex].path = newPath;
+                            }
+
+                            // Update selectedFiles
+                            const selectedIndex = selectedFiles.value.indexOf(oldPath);
+                            if (selectedIndex !== -1) {
+                                selectedFiles.value[selectedIndex] = newPath;
+                            }
+
+                            // Update selectedFilesSnapshot
+                            const snapshotIndex = selectedFilesSnapshot.value.indexOf(oldPath);
+                            if (snapshotIndex !== -1) {
+                                selectedFilesSnapshot.value[snapshotIndex] = newPath;
+                            }
+
+                            // Update checkedFiles
+                            const checkedIndex = checkedFiles.value.indexOf(oldPath);
+                            if (checkedIndex !== -1) {
+                                checkedFiles.value[checkedIndex] = newPath;
+                            }
+
+                            // Update expandedFiles (rename key)
+                            if (expandedFiles[oldPath]) {
+                                expandedFiles[newPath] = expandedFiles[oldPath];
+                                delete expandedFiles[oldPath];
+                            }
+
+                            // Update checkedContentBlocks (rename key)
+                            if (checkedContentBlocks[oldPath]) {
+                                checkedContentBlocks[newPath] = checkedContentBlocks[oldPath];
+                                delete checkedContentBlocks[oldPath];
+                            }
+
+                            // Update editingFile if it's being edited
+                            if (editingFile.value === oldPath) {
+                                editingFile.value = newPath;
+                            }
+
+                            toast({ title: 'Rename', message: 'File renamed successfully', level: 'success' });
+                        }
+                    } catch (e) {
+                        console.error('Rename error:', e);
+                        notify({ title: 'Rename failed', message: formatAxiosError(e), level: 'error' });
+                    } finally {
+                        renameDialog.open = false;
+                        renameDialog.filePath = '';
+                    }
+                }
+
+                function deleteFile(file) {
+                    deleteDialog.filePath = file;
+                    deleteDialog.message = `Are you sure you want to delete?`;
+                    deleteDialog.open = true;
+                }
+
+                async function handleDeleteConfirm() {
+                    const filePath = deleteDialog.filePath;
+                    if (!filePath) return;
+
+                    try {
+                        const response = await axios.post('api.php', {
+                            action: 'delete_file',
+                            path: filePath
+                        });
+
+                        if (response.data.success) {
+                            // Remove from all state
+                            files.value = files.value.filter(f => f.path !== filePath);
+                            removeSelectedFile(filePath);
+
+                            toast({ title: 'Delete', message: 'File deleted successfully', level: 'success' });
+                        }
+                    } catch (e) {
+                        console.error('Delete error:', e);
+                        notify({ title: 'Delete failed', message: formatAxiosError(e), level: 'error' });
+                    } finally {
+                        deleteDialog.open = false;
+                        deleteDialog.filePath = '';
+                        deleteDialog.message = '';
+                    }
+                }
+
+                function requestDeleteRecentPath(path) {
+                    deleteRecentPathDialog.path = path;
+                    deleteRecentPathDialog.message = `Are you sure you want to remove this recent path?`;
+                    deleteRecentPathDialog.open = true;
+                }
+
+                function handleDeleteRecentPathConfirm() {
+                    const pathToDelete = deleteRecentPathDialog.path;
+                    if (!pathToDelete) return;
+
+                    recentPaths.value = recentPaths.value.filter(p => p !== pathToDelete);
+                    saveStateToLocalStorage();
+
+                    toast({ title: 'Recent Paths', message: 'Path removed from recent list', level: 'success' });
+
+                    deleteRecentPathDialog.open = false;
+                    deleteRecentPathDialog.path = '';
+                    deleteRecentPathDialog.message = '';
+                }
+
+                function getRelativePath(fullPath) {
+                    for (const basePath of recentPaths.value) {
+                        if (fullPath.startsWith(basePath)) {
+                            fullPath = fullPath.substring(basePath.length).replace(/^[\/\\]/, '');
+                            return fullPath;
+                        }
+                    }
+                    return fullPath;
+                }
+
+                async function openLinksDialog() {
+                    // Get files to show
+                    const visibleFiles = filteredMiddlePaneItems.value
+                        .filter(item => item.type === 'file')
+                        .map(item => item.path);
+
+                    const checkedVisibleFiles = visibleFiles.filter(p => checkedFiles.value.includes(p));
+                    const filesToShow = checkedVisibleFiles.length > 0 ? checkedVisibleFiles : visibleFiles;
+
+                    if (!filesToShow.length) {
+                        toast({ title: 'Links', message: 'No files to show.', level: 'warn' });
+                        return;
+                    }
+
+                    linksDialog.open = true;
+                    linksDialog.mode = 'relative';
+                    linksDialog.loading = false;
+
+                    // Generate initial links
+                    await updateLinksContent(filesToShow);
+                }
+
+                async function updateLinksContent(filePaths) {
+                    if (linksDialog.mode === 'relative') {
+                        linksDialog.links = filePaths.map(p => getRelativePath(p)).join('\n');
+                    } else if (linksDialog.mode === 'full') {
+                        linksDialog.links = filePaths.join('\n');
+                    } else if (linksDialog.mode === 'public') {
+                        linksDialog.loading = true;
+                        try {
+                            const baseUrl = window.location.origin + window.location.pathname.replace(/[^/]*$/, 'api.php');
+
+                            const response = await axios.post('api.php', {
+                                action: 'generate_public_links',
+                                paths: filePaths
+                            });
+
+                            const links = (response.data.links || []).map(item => {
+                                // Calculate relative path on frontend
+                                const relpath = getRelativePath(item.path);
+                                const relpathEncoded = encodeURIComponent(relpath);
+                                return `${baseUrl}?action=get_raw_content&relpath=${relpathEncoded}&token=${item.token}`;
+                            });
+                            linksDialog.links = links.join('\n');
+                        } catch (e) {
+                            console.error('Error generating public links:', e);
+                            toast({ title: 'Links', message: `Failed to generate public links. ${formatAxiosError(e)}`, level: 'error' });
+                            linksDialog.links = '';
+                        } finally {
+                            linksDialog.loading = false;
+                        }
+                    } else if (linksDialog.mode === 'ai') {
+                        linksDialog.loading = true;
+                        try {
+                            const baseUrl = window.location.origin + window.location.pathname.replace(/[^/]*$/, 'api.php');
+
+                            const response = await axios.post('api.php', {
+                                action: 'generate_public_links',
+                                paths: filePaths
+                            });
+
+                            const links = (response.data.links || []).map(item => {
+                                const relpath = getRelativePath(item.path);
+                                return `${relpath},${item.token}`;
+                            });
+                            linksDialog.links = '# File List (PATH → TOKEN)\n' + links.join('\n') + '\n\n# Để đọc nội dung file, dùng curl với SSL verification disabled:\ncurl -k "' + `${baseUrl}?action=get_raw_content&token={TOKEN}` + '"';
+                        } catch (e) {
+                            console.error('Error generating public links:', e);
+                            toast({ title: 'Links', message: `Failed to generate public links. ${formatAxiosError(e)}`, level: 'error' });
+                            linksDialog.links = '';
+                        } finally {
+                            linksDialog.loading = false;
+                        }
+                    }
+                }
+
+                function closeLinksDialog() {
+                    linksDialog.open = false;
+                    linksDialog.links = '';
+                }
+
+                function handleLinksCopy(success) {
+                    if (success) {
+                        toast({ title: 'Links', message: 'Links copied to clipboard!', level: 'success' });
+                    }
+                }
+
+                // Watch mode changes to regenerate links
+                watch(() => linksDialog.mode, async () => {
+                    if (!linksDialog.open) return;
+
+                    const visibleFiles = filteredMiddlePaneItems.value
+                        .filter(item => item.type === 'file')
+                        .map(item => item.path);
+
+                    const checkedVisibleFiles = visibleFiles.filter(p => checkedFiles.value.includes(p));
+                    const filesToShow = checkedVisibleFiles.length > 0 ? checkedVisibleFiles : visibleFiles;
+
+                    await updateLinksContent(filesToShow);
+                });
+
+                // Right pane helpers (now respect report view)
+                async function copyMergeContent() {
+                    const text = mergeContent.value;
+                    if (!text) return;
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        try {
+                            await navigator.clipboard.writeText(text);
+                            toast({ title: 'Clipboard', message: 'Content copied to clipboard!', level: 'success' });
+                        } catch (err) {
+                            console.error('Failed to copy via Clipboard API:', err);
+                            toast({ title: 'Clipboard', message: `Copy failed. ${formatAxiosError(err)}`, level: 'error' });
+                        }
+                    } else { fallbackCopyToClipboard(text); }
+                }
+                function fallbackCopyToClipboard(text) {
+                    const textArea = document.createElement("textarea");
+                    textArea.value = text; textArea.style.position = "fixed"; textArea.style.top = "-9999px";
+                    document.body.appendChild(textArea); textArea.focus(); textArea.select();
+                    try {
+                        if (document.execCommand('copy')) {
+                            toast({ title: 'Clipboard', message: 'Content copied to clipboard!', level: 'success' });
+                        } else {
+                            throw new Error('execCommand returned false');
+                        }
+                    } catch (err) {
+                        console.error('Fallback copy failed:', err);
+                        toast({ title: 'Clipboard', message: `Copy failed. ${formatAxiosError(err)}`, level: 'error' });
+                    }
+                    document.body.removeChild(textArea);
+                }
+                function downloadMergeContent() {
+                    const blob = new Blob([mergeContent.value], { type: 'text/plain' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url; a.download = 'merged_content.txt';
+                    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+                }
+
+                function clearLeftPane() {
+                     // Clear snapshot cũ để tránh file cũ bị check all sau này
+                     selectedFilesSnapshot.value = [];
+
+                     // Bỏ chọn ở left
+                     selectedFilesSnapshot.value = [...selectedFilesForMiddle.value];
+
+                     filterKeyword.value = '';
+                     selectedFiles.value = [];
+                }
+
+                async function saveContent(content) {
+                    try { await axios.post('api.php', { action: 'save_file_content', path: editingFile.value, content }); }
+                    catch (e) {
+                        console.error('Error saving content:', e);
+                        notify({
+                            title: 'Save file',
+                            message: `Failed to save ${getRelativePath(editingFile.value)}. ${formatAxiosError(e)}`,
+                            level: 'error'
+                        });
+                    }
+                }
+
+                function collapseLeftPanes() { collapseLevel.value += 1; }
+                function expandPanes() { collapseLevel.value = 0; }
+
+                async function runSearch() {
+                    if (!searchQuery.value) {
+                        notify({ title: 'Search', message: 'Enter a search string.', level: 'warn' });
+                        return;
+                    }
+
+                    const paths = checkedFilesNonDirText.value;
+
+                    if (!paths.length) {
+                        notify({ title: 'Search', message: 'Please check at least one text file.', level: 'warn' });
+                        return;
+                    }
+
+                    try {
+                        const res = await axios.post('api.php', {
+                            action: 'search_in_files',
+                            paths,
+                            pattern: searchQuery.value,
+                            options: { case_sensitive: true, regex: false }
+                        });
+                        searchResult.value = res.data;
+                        replaceResult.value = null;
+                        fileContents.value = [];
+                    } catch (e) {
+                        console.error('Search error:', e);
+                        notify({ title: 'Search', message: `Search failed. ${formatAxiosError(e)}`, level: 'error' });
+                    }
+                }
+
+                async function runReplace() {
+                    if (!searchQuery.value) {
+                        notify({ title: 'Replace', message: 'Enter a search string first.', level: 'warn' });
+                        return;
+                    }
+
+                    const paths = checkedFilesNonDirText.value;
+
+                    if (!paths.length) {
+                        notify({ title: 'Replace', message: 'Please check at least one text file.', level: 'warn' });
+                        return;
+                    }
+
+                    try {
+                        // 1) Lấy chi tiết match (để render giống mẫu)
+                        const searchRes = await axios.post('api.php', {
+                            action: 'search_in_files',
+                            paths,
+                            pattern: searchQuery.value,
+                            options: { case_sensitive: true, regex: false }
+                        });
+
+                        // 2) Gọi replace thực sự (áp dụng thay đổi)
+                        const replaceRes = await axios.post('api.php', {
+                            action: 'replace_in_files',
+                            paths,
+                            pattern: searchQuery.value,
+                            replacement: replaceQuery.value ?? '',
+                            options: { case_sensitive: true, regex: false, dry_run: false }
+                        });
+
+                        // 3) Hợp nhất dữ liệu hiển thị: dùng matches từ search (có lines/preview),
+                        //    và giữ summary của search để in header giống mẫu.
+                        //    Nếu anh muốn, có thể gắn thêm replaceRes.summary vào data để xem nội bộ.
+                        replaceResult.value = {
+                            summary: searchRes.data?.summary || { scanned: 0, matched_files: 0, total_matches: 0 },
+                            matches: searchRes.data?.matches || [],
+                            _replaceSummary: replaceRes.data?.summary || null   // optional, không render
+                        };
+
+                        searchResult.value = null;
+                        fileContents.value = [];
+                    } catch (e) {
+                        console.error('Replace error:', e);
+                        notify({ title: 'Replace', message: `Replace failed. ${formatAxiosError(e)}`, level: 'error' });
+                    }
+                }
+
+                function openSelectedTree() {
+                    const all = files.value || [];
+                    const useChecked = (checkedFilesNonDir.value || []).length > 0;
+                    const basis = useChecked
+                        ? new Set(checkedFilesNonDir.value)
+                        : new Set(selectedFilesForMiddle.value || []);
+                    const subset = all.filter(f => f?.type === 'file' && basis.has(f.path));
+                    if (!subset.length) {
+                        notify({ title: 'Directory Structure', message: 'No matching files.', level: 'info' });
+                        return;
+                    }
+                    const tree = renderDirectoryTree(subset);
+                    notify({ title: 'Directory Structure', message: tree });
+                }
+
+                function toggleDarkMode() {
+                    darkMode.value = !darkMode.value;
+                }
+
+                return {
+                    kindOf,
+                    mobileMenuOpen, toggleMobileMenu, closeMobileMenu,
+                    directoryPath, files, selectedFiles, selectedFilesNonDir,
+                    checkedFiles, checkedFilesNonDir, fileContents, filterKeyword, filteredFiles,
+                    mergeContent, analyzeDirectory, toggleDirectorySelection, viewFiles, viewFilesOutline, viewSingleFile, viewSingleFileOutline, downloadSingle, downloadFiles,
+                    getRelativePath, clearLeftPane, selectedFilesForMiddle, recentPaths, showRecentPaths,
+                    expandedFiles, checkedContentBlocks, isExpandableFile, expandFile, getBlockName, checkAllFiles, clearCheckedFiles,
+                    clearSelectedFiles, removeSelectedFile, onClickContentBlock, saveContent, collapseLeftPanes, expandPanes, editFile, editingFile, editingContent,
+                    collapseLevel, renderDirectoryTree,
+                    searchQuery, replaceQuery, runSearch, runReplace, searchResult, replaceResult,
+                    copyMergeContent, downloadMergeContent,
+                    onPrimary, getMenuItems,
+                    middleWidth, minMiddle, DEFAULT_MIDDLE, computeMaxMiddle,
+                    leftWidth, minLeft, DEFAULT_LEFT, computeMaxLeft,
+                    middlePaneFilter,
+                    filteredMiddlePaneItems,
+                    hasCheckedVisibleFiles,
+                    isDirectoryCheckedInMiddle,
+                    toggleDirectoryCheckInMiddle,
+                    openSelectedTree,
+                    fileLists, listDialog,
+                    openSaveListDialog, openLoadFromListDialog, closeListDialog, handleListConfirm, handleListDelete,
+                    toggleDarkMode, darkMode,
+                    renameDialog, deleteDialog,
+                    handleRenameConfirm,
+                    handleDeleteConfirm,
+                    deleteRecentPathDialog,
+                    requestDeleteRecentPath, handleDeleteRecentPathConfirm,
+                    linksDialog, openLinksDialog, closeLinksDialog, handleLinksCopy,
+                    showLoginDialog,
+                    authUsername,
+                    handleLoginSuccess,
+                    handleLogout
+                };
+            }
+        });
+
+        app.mount('#app');
+    </script>
+</body>
+</html>
