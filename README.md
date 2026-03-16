@@ -5,6 +5,10 @@
 ![Self Hosted](https://img.shields.io/badge/self--hosted-yes-brightgreen)
 ![Lightweight](https://img.shields.io/badge/dependencies-none-lightgrey)
 
+<p align="center">
+  <img src="screenshot.png" width="100%">
+</p>
+
 A lightweight **web-based tool for exploring directory structures across multiple repositories** and quickly extracting file contents for development workflows.
 
 This tool is especially useful when working with **AI coding assistants or AI agents**, allowing developers to quickly browse a project, select relevant files, and copy their contents into prompts.
@@ -47,14 +51,6 @@ This makes it much easier to **prepare context for AI agents**.
 * Lightweight architecture (no database required)
 * Token-based authentication
 * Simple JSON-based configuration
-
----
-
-# Screenshot
-
-<p align="center">
-  <img src="screenshot.png" width="100%">
-</p>
 
 ---
 
