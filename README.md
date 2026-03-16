@@ -213,14 +213,3 @@ If you'd like to improve the project:
 # License
 
 MIT License
-
----
-
-# Keywords
-
-directory structure viewer
-file tree explorer
-web file browser
-developer tool
-AI coding workflow
-self hosted developer utilities
