@@ -52,11 +52,9 @@ This makes it much easier to **prepare context for AI agents**.
 
 # Screenshot
 
-*(Add a screenshot here)*
-
-```
-docs/screenshot.png
-```
+<p align="center">
+  <img src="screenshot.png" width="900">
+</p>
 
 ---
 
